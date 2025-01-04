@@ -13,21 +13,20 @@ from requests import Response, Session
 from requests.adapters import HTTPAdapter, Retry
 from s3transfer.upload import (
     UploadFilenameInputManager,
-    UploadNonSeekableInputManager,
     UploadSeekableInputManager,
     UploadSubmissionTask,
 )
 
 
 class FileLikeResponse(io.RawIOBase):
-    def __init__(self, resp: Response):
+    def __init__(self, resp: Response, size: int):
         self.resp = resp
         self.buffer = bytearray()
         self.iterator = iter(resp.iter_content(chunk_size=10 * 2 ** 10))
         self._tell = 0
+        self._size = size
 
     def read(self, __size=-1):
-        logging.info(f'read {__size}')
         while len(self.buffer) < __size and self.iterator is not None:
             try:
                 data = next(self.iterator)
@@ -37,7 +36,7 @@ class FileLikeResponse(io.RawIOBase):
                 self.buffer.extend(data)
 
         result = self.buffer[:__size]
-        self.buffer = self.buffer[__size:]
+        self.buffer = bytearray(self.buffer[__size:])
         self._tell += len(result)
         return result
 
@@ -45,7 +44,7 @@ class FileLikeResponse(io.RawIOBase):
         return True
 
     def size(self):
-        return self.resp.headers['Content-Length']
+        return self._size
 
     def tell(self):
         return self._tell
@@ -82,7 +81,6 @@ def _get_upload_input_manager_cls(self, transfer_future):
         UploadFileLikeResponseInputManager,
         UploadFilenameInputManager,
         UploadSeekableInputManager,
-        UploadNonSeekableInputManager,
     ]
 
     fileobj = transfer_future.meta.call_args.fileobj
@@ -147,13 +145,13 @@ class Copier:
 
     def copy_file_to_s3(self, src_url, dst_path):
         self.logger.info(f'Downloading from {src_url} to {dst_path}')
-        with self.http_client.get(src_url) as response:
+        with self.http_client.head(src_url) as response:
             response.raise_for_status()
-            # with SpooledTemporaryFile(buffering=10*2**20) as f:
-            #     for chunk in response.iter_content(chunk_size=1024):
-            #         f.write(chunk)
+            size = int(response.headers['content-length'])
+        with self.http_client.get(src_url, stream=True) as response:
+            response.raise_for_status()
             self.s3_client.upload_fileobj(
-                FileLikeResponse(response),
+                FileLikeResponse(response, size),
                 Bucket=self.bucket,
                 Key=dst_path,
                 ExtraArgs={"ContentType": response.headers['Content-Type']},
@@ -203,7 +201,7 @@ def main(
         s3_secret_access_key=s3_secret_access_key,
         bucket=bucket,
     )
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:
         for result in executor.map(copier.process_item, res.fetchall()):
             src_url, success = result
             cur.execute("UPDATE upload_progress SET success = ? WHERE src = ?", (success, src_url))
