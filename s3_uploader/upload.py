@@ -53,7 +53,6 @@ class FileLikeResponse(io.RawIOBase):
 class UploadFileLikeResponseInputManager(UploadSeekableInputManager):
     @classmethod
     def is_compatible(cls, upload_source):
-        logging.info('Is compatible')
         return isinstance(upload_source, FileLikeResponse)
 
     def provide_transfer_size(self, transfer_future):
@@ -61,7 +60,6 @@ class UploadFileLikeResponseInputManager(UploadSeekableInputManager):
         # To determine size, first determine the starting position
         # Seek to the end and then find the difference in the length
         # between the end and start positions.
-        logging.info(fileobj.resp.headers)
         transfer_future.meta.provide_transfer_size(
             fileobj.size()
         )
