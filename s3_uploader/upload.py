@@ -32,12 +32,15 @@ class Copier:
         concurrency
     ):
         self.http_client = self._create_session(concurrency)
+        s3_client_config = self.default_s3_client_config.merge(
+            Config(max_pool_connections=concurrency * 10),
+        )
         self.s3_client = boto3.client(
             's3',
             endpoint_url='https://storage.yandexcloud.net/',
             aws_access_key_id=s3_access_key_id,
             aws_secret_access_key=s3_secret_access_key,
-            config=self.default_s3_client_config
+            config=s3_client_config,
         )
         self.bucket = bucket
         self.logger = logging.getLogger('Copier')
