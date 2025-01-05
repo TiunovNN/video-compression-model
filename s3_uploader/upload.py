@@ -64,6 +64,9 @@ class UploadFileLikeResponseInputManager(UploadSeekableInputManager):
             fileobj.size()
         )
 
+    def _wrap_fileobj(self, fileobj):
+        return fileobj
+
 
 def _get_upload_input_manager_cls(self, transfer_future):
     """Retrieves a class for managing input for an upload based on file type
