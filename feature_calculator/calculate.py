@@ -6,7 +6,7 @@ import click
 from dotenv import load_dotenv
 
 from decoder import Decoder
-from features import SICalculator, TICalculator
+from features import CTICalculator, SICalculator, TICalculator
 
 
 @click.command()
@@ -36,6 +36,7 @@ def main(
     feature_calculators = [
         SICalculator(),
         TICalculator(),
+        CTICalculator(),
     ]
     buffer = io.StringIO()
     fieldnames = [

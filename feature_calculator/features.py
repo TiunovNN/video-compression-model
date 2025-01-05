@@ -16,6 +16,11 @@ class FeatureCalculator(ABC):
 
 
 class SICalculator(FeatureCalculator):
+    """
+    Spatial information
+    https://www.itu.int/rec/T-REC-P.910-200804-I/en
+    """
+
     def feed_frame(self, frame: np.ndarray) -> Optional[float]:
         if frame.ndim == 3:
             # take only Y component
@@ -36,6 +41,11 @@ class SICalculator(FeatureCalculator):
 
 
 class TICalculator(FeatureCalculator):
+    """
+    Temporal information
+    https://www.itu.int/rec/T-REC-P.910-200804-I/en
+    """
+
     def __init__(self):
         self.prev_frame = None
 
@@ -54,3 +64,20 @@ class TICalculator(FeatureCalculator):
 
     def name(self) -> str:
         return 'TI'
+
+
+class CTICalculator(FeatureCalculator):
+    """
+    Contrast Information
+    """
+
+    def feed_frame(self, frame: np.ndarray) -> Optional[float]:
+        if frame.ndim == 3:
+            # take only Y component
+            frame = frame[0]
+
+        assert frame.ndim == 2, frame.ndim
+        return float(frame.std())
+
+    def name(self) -> str:
+        return 'CTI'
