@@ -1,5 +1,6 @@
 import csv
 import io
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import boto3
 import click
@@ -53,21 +54,30 @@ def main(
 
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
     writer.writeheader()
+
     with Decoder(presigned_url) as decoder:
-        for frame in decoder:
-            item = {
-                'width': frame.width,
-                'height': frame.height,
-                'format': frame.format.name,
-                'key_frame': int(frame.key_frame),
-                'time': frame.time,
-                'pts': frame.pts,
-                'dts': frame.dts,
-            }
-            frame_data = frame.to_ndarray()
-            for calculator in feature_calculators:
-                item[calculator.name()] = calculator.feed_frame(frame_data)
-            writer.writerow(item)
+        with ThreadPoolExecutor() as pool:
+            for frame in decoder:
+                item = {
+                    'width': frame.width,
+                    'height': frame.height,
+                    'format': frame.format.name,
+                    'key_frame': int(frame.key_frame),
+                    'time': frame.time,
+                    'pts': frame.pts,
+                    'dts': frame.dts,
+                }
+                frame_data = frame.to_ndarray()
+                mapping = zip(
+                    feature_calculators,
+                    pool.map(
+                        lambda calc: (calc, calc.feed_frame(frame_data)),
+                        feature_calculators,
+                    )
+                )
+                for calc, result in mapping:
+                    item[calc.name()] = result
+                writer.writerow(item)
 
     buffer.seek(0)
     s3_client.put_object(
