@@ -51,7 +51,7 @@ def main(
     for calculator in feature_calculators:
         fieldnames.append(calculator.name())
 
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL, quotechar='|')
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
     writer.writeheader()
     with Decoder(presigned_url) as decoder:
         for frame in decoder:
