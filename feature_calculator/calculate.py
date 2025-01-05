@@ -68,12 +68,9 @@ def main(
                     'dts': frame.dts,
                 }
                 frame_data = frame.to_ndarray()
-                mapping = zip(
+                mapping = pool.map(
+                    lambda calc: (calc, calc.feed_frame(frame_data)),
                     feature_calculators,
-                    pool.map(
-                        lambda calc: (calc, calc.feed_frame(frame_data)),
-                        feature_calculators,
-                    )
                 )
                 for calc, result in mapping:
                     item[calc.name()] = result

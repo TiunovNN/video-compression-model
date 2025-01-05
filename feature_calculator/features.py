@@ -27,11 +27,11 @@ class SICalculator(FeatureCalculator):
             frame = frame[0]
 
         assert frame.ndim == 2, frame.ndim
-        sob_x = ndimage.sobel(frame, axis=0)
-        sob_y = ndimage.sobel(frame, axis=1)
+        sob_x = ndimage.sobel(frame.astype(np.uint32), axis=0)
+        sob_y = ndimage.sobel(frame.astype(np.uint32), axis=1)
 
         # crop output to valid window, calculate gradient magnitude
-        t = np.hypot(sob_x.astype(np.float64), sob_y.astype(np.float64))
+        t = np.hypot(sob_x, sob_y)
         t = t[1:-1, 1:-1]
         result = t.std()
         return float(result)
