@@ -142,6 +142,7 @@ def main(
         s3_access_key_id=s3_access_key_id,
         s3_secret_access_key=s3_secret_access_key,
         bucket=bucket,
+        concurrency=concurrency,
     )
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         for result in executor.map(copier.process_item, res.fetchall()):
