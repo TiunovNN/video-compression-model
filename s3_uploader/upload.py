@@ -8,6 +8,7 @@ import boto3
 import click
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from requests import Session
 from requests.adapters import HTTPAdapter, Retry
@@ -74,7 +75,7 @@ class Copier:
                 Key=dst_path,
             )
             return
-        except self.s3_client.exceptions.NoSuchKey:
+        except ClientError:
             pass
 
         with self.http_client.get(src_url, stream=True) as response:
