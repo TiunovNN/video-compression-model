@@ -1,13 +1,35 @@
 import csv
 import io
+from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
+from graphlib import TopologicalSorter
+from itertools import chain
 
 import boto3
 import click
+import numpy as np
 from dotenv import load_dotenv
 
 from decoder import Decoder
-from features import CTICalculator, SICalculator, TICalculator
+from extractors import (
+    Extractor,
+    GLCMExtractor,
+    GLCMPropertyExtractor,
+    SIExtractor,
+    TICalculator,
+    YExtractor,
+)
+from features import FeatureCalculator, MeanCalculator, STDCalculator
+
+Processor = Extractor | FeatureCalculator
+ProcessorResult = np.ndarray | float | None
+
+
+def run_processor(processor: Processor, frame: np.ndarray) -> tuple[Processor, ProcessorResult]:
+    if isinstance(processor, Extractor):
+        return processor, processor.extract(frame)
+
+    return processor, processor.feed_frame(frame)
 
 
 @click.command()
@@ -34,11 +56,41 @@ def main(
         Params={'Bucket': input_bucket, 'Key': path},
         ExpiresIn=3600 * 24,
     )
-    feature_calculators = [
-        SICalculator(),
+    extractors = [
+        YExtractor(),
+        SIExtractor(),
         TICalculator(),
-        CTICalculator(),
+        GLCMExtractor(),
+        GLCMPropertyExtractor('correlation'),
+        GLCMPropertyExtractor('contrast'),
+        GLCMPropertyExtractor('energy'),
+        GLCMPropertyExtractor('homogeneity'),
     ]
+    feature_calculators = [
+        STDCalculator('Y', 'CTI_std'),
+        STDCalculator('SI'),
+        STDCalculator('TI'),
+        MeanCalculator('Y'),
+        MeanCalculator('SI'),
+        MeanCalculator('TI'),
+        MeanCalculator('GLCM_correlation'),
+        MeanCalculator('GLCM_contrast'),
+        MeanCalculator('GLCM_energy'),
+        MeanCalculator('GLCM_homogeneity'),
+        STDCalculator('GLCM_correlation'),
+        STDCalculator('GLCM_contrast'),
+        STDCalculator('GLCM_energy'),
+        STDCalculator('GLCM_homogeneity'),
+    ]
+    processors = {
+        processor.name(): processor
+        for processor in chain(extractors, feature_calculators)
+    }
+    dependencies = {
+        processor.name(): [processor.depends_on()] if processor.depends_on() else []
+        for processor in chain(extractors, feature_calculators)
+    }
+
     buffer = io.StringIO()
     fieldnames = [
         'width',
@@ -67,13 +119,26 @@ def main(
                     'pts': frame.pts,
                     'dts': frame.dts,
                 }
+                extractors_results = {}
                 frame_data = frame.to_ndarray()
-                mapping = pool.map(
-                    lambda calc: (calc, calc.feed_frame(frame_data)),
-                    feature_calculators,
-                )
-                for calc, result in mapping:
-                    item[calc.name()] = result
+                graph = TopologicalSorter(dependencies)
+                graph.prepare()
+                while graph.is_active():
+                    ready_processors_names = graph.get_ready()
+                    futures = []
+                    for name in ready_processors_names:
+                        processor = processors[name]
+                        matrix = extractors_results.get(processor.depends_on(), frame_data)
+                        future = pool.submit(run_processor, processor, matrix)
+                        futures.append(future)
+
+                    for future in as_completed(futures):
+                        calc, result = future.result()
+                        if isinstance(calc, Extractor):
+                            extractors_results[calc.name()] = result
+                        else:
+                            item[calc.name()] = result
+                    graph.done(*ready_processors_names)
                 writer.writerow(item)
 
     buffer.seek(0)

@@ -2,12 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
-from scipy import ndimage
 
 
 class FeatureCalculator(ABC):
+    def depends_on(self) -> Optional[str]:
+        return
+
     @abstractmethod
-    def feed_frame(self, frame: np.ndarray) -> Optional[float]:
+    def feed_frame(self, frame: Optional[np.ndarray]) -> Optional[float]:
         pass
 
     @abstractmethod
@@ -15,67 +17,33 @@ class FeatureCalculator(ABC):
         pass
 
 
-class SICalculator(FeatureCalculator):
-    """
-    Spatial information
-    https://www.itu.int/rec/T-REC-P.910-200804-I/en
-    """
+class STDCalculator(FeatureCalculator):
+    def __init__(self, extractor: str, name: str = None):
+        self.extractor = extractor
+        self._name = name
 
-    def feed_frame(self, frame: np.ndarray) -> Optional[float]:
-        if frame.ndim == 3:
-            # take only Y component
-            frame = frame[0]
+    def depends_on(self) -> str:
+        return self.extractor
 
-        assert frame.ndim == 2, frame.ndim
-        frame = frame.astype(np.int16)
-        sob_x = ndimage.sobel(frame, axis=0)
-        sob_y = ndimage.sobel(frame, axis=1)
-
-        result = np.hypot(sob_x, sob_y).std()
-        return float(result)
+    def feed_frame(self, frame: Optional[np.ndarray]) -> Optional[float]:
+        if frame is not None:
+            return float(frame.std())
 
     def name(self) -> str:
-        return 'SI'
+        return self._name or f'{self.extractor}_std'
 
 
-class TICalculator(FeatureCalculator):
-    """
-    Temporal information
-    https://www.itu.int/rec/T-REC-P.910-200804-I/en
-    """
+class MeanCalculator(FeatureCalculator):
+    def __init__(self, extractor: str, name: str = None):
+        self.extractor = extractor
+        self._name = name
 
-    def __init__(self):
-        self.prev_frame = None
+    def depends_on(self) -> str:
+        return self.extractor
 
-    def feed_frame(self, frame: np.ndarray) -> Optional[float]:
-        if frame.ndim == 3:
-            # take only Y component
-            frame = frame[0]
-
-        if self.prev_frame is None:
-            self.prev_frame = frame
-            return
-
-        ti = (frame - self.prev_frame).std()
-        self.prev_frame = frame
-        return float(ti)
+    def feed_frame(self, frame: Optional[np.ndarray]) -> Optional[float]:
+        if frame is not None:
+            return float(frame.mean())
 
     def name(self) -> str:
-        return 'TI'
-
-
-class CTICalculator(FeatureCalculator):
-    """
-    Contrast Information
-    """
-
-    def feed_frame(self, frame: np.ndarray) -> Optional[float]:
-        if frame.ndim == 3:
-            # take only Y component
-            frame = frame[0]
-
-        assert frame.ndim == 2, frame.ndim
-        return float(frame.std())
-
-    def name(self) -> str:
-        return 'CTI'
+        return self._name or f'{self.extractor}_mean'
