@@ -70,7 +70,7 @@ def main(
         STDCalculator('Y', 'CTI_std'),
         STDCalculator('SI'),
         STDCalculator('TI'),
-        MeanCalculator('Y'),
+        MeanCalculator('Y', 'CTI_mean'),
         MeanCalculator('SI'),
         MeanCalculator('TI'),
         MeanCalculator('GLCM_correlation'),
