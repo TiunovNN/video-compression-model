@@ -157,7 +157,12 @@ class AnalyzeAndUploader:
             ExpiresIn=3600 * 24,
         )
         logging.info(f'Analyzing file {self.input_bucket}/{path}')
-        csv_data = analyze_file(presigned_url)
+        try:
+            csv_data = analyze_file(presigned_url)
+        except Exception as e:
+            logging.exception(f'Error while analyzing file {self.input_bucket}/{path}: {e}')
+            return
+
         logging.info(f'Uploading {len(csv_data)} to {self.output_bucket}/{path}.csv')
         s3_client.put_object(
             Bucket=self.output_bucket,
