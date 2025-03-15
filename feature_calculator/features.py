@@ -47,3 +47,19 @@ class MeanCalculator(FeatureCalculator):
 
     def name(self) -> str:
         return self._name or f'{self.extractor}_mean'
+
+
+class FHV13Calculator(FeatureCalculator):
+    def depends_on(self) -> Optional[str]:
+        return 'FHV13_frames'
+
+    def name(self) -> str:
+        return 'FHV13'
+
+    def feed_frame(self, frame: Optional[np.ndarray]) -> Optional[float]:
+        if frame is None:
+            return
+
+        hv_mask = frame[:, :, 0]
+        not_hv_mask = frame[:, :, 1]
+        return max(float(hv_mask.mean()), 3) / max(not_hv_mask.mean(), 3)

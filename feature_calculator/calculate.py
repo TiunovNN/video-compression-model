@@ -21,14 +21,24 @@ from dotenv import load_dotenv
 
 from decoder import Decoder
 from extractors import (
+    CIExtractor,
     Extractor,
+    FHV13Extractor,
+    FSI13Extractor,
     GLCMExtractor,
     GLCMPropertyExtractor,
     SIExtractor,
     TICalculator,
+    UExtractor,
+    VExtractor,
     YExtractor,
 )
-from features import FeatureCalculator, MeanCalculator, STDCalculator
+from features import (
+    FHV13Calculator,
+    FeatureCalculator,
+    MeanCalculator,
+    STDCalculator,
+)
 
 Processor = Extractor | FeatureCalculator
 ProcessorResult = np.ndarray | float | None
@@ -55,6 +65,8 @@ def run_processor(processor: Processor, frame: np.ndarray) -> tuple[Processor, P
 def analyze_file(presigned_url) -> bytes:
     extractors = [
         YExtractor(),
+        UExtractor(),
+        VExtractor(),
         SIExtractor(),
         TICalculator(),
         GLCMExtractor(),
@@ -62,6 +74,10 @@ def analyze_file(presigned_url) -> bytes:
         GLCMPropertyExtractor('contrast'),
         GLCMPropertyExtractor('energy'),
         GLCMPropertyExtractor('homogeneity'),
+        CIExtractor('U'),
+        CIExtractor('V', 1.5),
+        FSI13Extractor(),
+        FHV13Extractor(),
     ]
     feature_calculators = [
         STDCalculator('Y', 'CTI_std'),
@@ -78,6 +94,10 @@ def analyze_file(presigned_url) -> bytes:
         STDCalculator('GLCM_contrast'),
         STDCalculator('GLCM_energy'),
         STDCalculator('GLCM_homogeneity'),
+        MeanCalculator('FSI13'),
+        MeanCalculator('CI_U'),
+        MeanCalculator('CI_V'),
+        FHV13Calculator(),
     ]
     processors = {
         processor.name(): processor
