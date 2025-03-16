@@ -301,16 +301,19 @@ def process_bucket(
         output_bucket,
     )
     with ProcessPoolExecutor(max_workers=concurrency, initializer=configure_logging) as pool:
-        for path in paths:
-            future = pool.submit(analyzer_and_uploader, path)
-            in_queue_futures.add(future)
-            if len(in_queue_futures) >= concurrency * 3:
-                for future in done:
-                    future.result()
-                done, in_queue_futures = wait(in_queue_futures, return_when=FIRST_COMPLETED)
+        try:
+            for path in paths:
+                future = pool.submit(analyzer_and_uploader, path)
+                in_queue_futures.add(future)
+                if len(in_queue_futures) >= concurrency * 3:
+                    for future in done:
+                        future.result()
+                    done, in_queue_futures = wait(in_queue_futures, return_when=FIRST_COMPLETED)
 
-        for future in as_completed(done):
-            future.result()
+            for future in as_completed(done):
+                future.result()
+        except KeyboardInterrupt:
+            pool.shutdown(cancel_futures=True)
 
 
 if __name__ == '__main__':
