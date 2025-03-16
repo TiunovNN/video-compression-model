@@ -250,12 +250,14 @@ def process_one(
 @click.option('--input-bucket', type=click.STRING, required=True)
 @click.option('--output-bucket', type=click.STRING, required=True)
 @click.option('--concurrency', type=click.INT, default=1)
+@click.option('--rewrite', is_flag=True)
 def process_bucket(
     s3_access_key_id: str,
     s3_secret_access_key: str,
     input_bucket: str,
     output_bucket: str,
     concurrency: int,
+    rewrite: bool,
 ):
     s3_client = boto3.client(
         's3',
@@ -266,6 +268,10 @@ def process_bucket(
     logging.info(f'Collecting paths from {input_bucket}')
     paths = []
     for path in iter_over_bucket(s3_client, input_bucket):
+        if rewrite:
+            paths.append(path)
+            continue
+
         try:
             s3_client.head_object(
                 Bucket=output_bucket,
