@@ -36,6 +36,40 @@ class YExtractor(Extractor):
         return 'Y'
 
 
+class UExtractor(Extractor):
+    """
+    Takes only U component
+    """
+
+    def extract(self, frame: np.ndarray) -> np.ndarray:
+        if frame.ndim == 3:
+            # take only U component
+            frame = frame[2]
+
+        assert frame.ndim == 2, frame.ndim
+        return frame
+
+    def name(self) -> str:
+        return 'U'
+
+
+class VExtractor(Extractor):
+    """
+    Takes only V component
+    """
+
+    def extract(self, frame: np.ndarray) -> np.ndarray:
+        if frame.ndim == 3:
+            # take only V component
+            frame = frame[2]
+
+        assert frame.ndim == 2, frame.ndim
+        return frame
+
+    def name(self) -> str:
+        return 'V'
+
+
 class SIExtractor(Extractor):
     """
     Spatial information
@@ -96,7 +130,7 @@ class GLCMExtractor(Extractor):
             [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4],
             levels=256,
             normed=True
-            )
+        )
 
     def name(self) -> str:
         return 'GLCM'
@@ -114,3 +148,147 @@ class GLCMPropertyExtractor(Extractor):
 
     def name(self) -> str:
         return f'GLCM_{self.property}'
+
+
+class CIExtractor(Extractor):
+    """
+    Chrominance Information
+    https://www.itu.int/rec/T-REC-P.910-200804-I/en
+    """
+
+    def __init__(self, component: str, w_r: float = 1):
+        self.component = component
+        self.w_r = w_r
+
+    def depends_on(self) -> Optional[str]:
+        return self.component
+
+    def extract(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        return frame * self.w_r
+
+    def name(self) -> str:
+        return f'CI_{self.component}'
+
+
+class FSI13Extractor(Extractor):
+    """
+    Spatial gradient S13
+
+    Video Quality Measurement Techniques
+    Stephen Wolf
+    Margaret Pinson
+    """
+    BANDPASS_FILTER_WEIGHT = [
+        -.0052625,
+        -.0173446,
+        -.0427401,
+        -.0768961,
+        -.0957739,
+        -.0696751,
+        0,
+        .0696751,
+        .0957739,
+        .0768961,
+        .0427401,
+        .0173446,
+        .0052625,
+    ]
+    # Порог восприятия для SI13
+    P_si13 = 12
+    # Порог восприятия для HV
+    P_hv = 3
+
+    @classmethod
+    def generate_sobel_13(cls):
+        matrix = np.repeat(np.array(cls.BANDPASS_FILTER_WEIGHT)[np.newaxis, :], 13, axis=0)
+        return matrix
+
+    def __init__(self):
+        self.sobel_13_x = self.generate_sobel_13()
+        self.sobel_13_y = self.generate_sobel_13().T
+
+    def depends_on(self) -> Optional[str]:
+        return 'Y'
+
+    def name(self) -> str:
+        return 'FSI13'
+
+    def extract(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        gx = ndimage.convolve(frame, self.sobel_13_x, mode='reflect')
+        gy = ndimage.convolve(frame, self.sobel_13_y, mode='reflect')
+        return np.hypot(gx, gy)
+
+
+class FHV13Extractor(Extractor):
+    """
+    Spatial gradient HV13
+
+    Video Quality Measurement Techniques
+    Stephen Wolf
+    Margaret Pinson
+    """
+    BANDPASS_FILTER_WEIGHT = [
+        -.0052625,
+        -.0173446,
+        -.0427401,
+        -.0768961,
+        -.0957739,
+        -.0696751,
+        0,
+        .0696751,
+        .0957739,
+        .0768961,
+        .0427401,
+        .0173446,
+        .0052625,
+    ]
+    # Порог восприятия для SI13
+    P_si13 = 12
+    # Порог восприятия для HV
+    P_hv = 3
+    # Параметры для расчета f_HV13
+    DELTA_THETA = 0.225  # радиан
+    R_MIN = 20
+
+    @classmethod
+    def generate_sobel_13(cls):
+        matrix = np.repeat(np.array(cls.BANDPASS_FILTER_WEIGHT)[np.newaxis, :], 13, axis=0)
+        return matrix
+
+    def __init__(self):
+        self.sobel_13_x = self.generate_sobel_13()
+        self.sobel_13_y = self.generate_sobel_13().T
+
+    def depends_on(self) -> Optional[str]:
+        return 'Y'
+
+    def name(self) -> str:
+        return 'FHV13_frames'
+
+    def extract(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        gx = ndimage.convolve(frame, self.sobel_13_x, mode='reflect')
+        gy = ndimage.convolve(frame, self.sobel_13_y, mode='reflect')
+        R = np.hypot(gx, gy)
+        theta = np.arctan2(gx, gy)
+        hv_mask = np.zeros_like(R)
+        for m in range(4):
+            # Угловой сектор для горизонтальных и вертикальных градиентов
+            angle_center = m * np.pi / 2
+            angle_min = angle_center - self.DELTA_THETA
+            angle_max = angle_center + self.DELTA_THETA
+
+            # Применяем маску для текущего квадранта
+            mask_condition = (R >= self.R_MIN) & (theta > angle_min) & (theta < angle_max)
+            hv_mask[mask_condition] = R[mask_condition]
+        not_hv_mask = np.zeros_like(R)
+        for m in range(4):
+            # Угловой сектор для диагональных градиентов
+            angle_center = m * np.pi / 2
+            angle_min = angle_center + self.DELTA_THETA
+            angle_max = angle_center - np.pi / 2 + self.DELTA_THETA
+
+            # Применяем маску для текущего диагонального сектора
+            mask_condition = (R >= self.R_MIN) & (theta >= angle_min) & (theta <= angle_max)
+            not_hv_mask[mask_condition] = R[mask_condition]
+
+        return np.dstack((hv_mask, not_hv_mask))
