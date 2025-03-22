@@ -2,15 +2,15 @@ import csv
 import io
 import logging
 import sys
+from collections import defaultdict
 from concurrent.futures import (
     FIRST_COMPLETED,
+    Future,
     ProcessPoolExecutor,
     ThreadPoolExecutor,
     as_completed,
     wait,
 )
-from graphlib import TopologicalSorter
-from itertools import chain
 from typing import Iterator
 
 import boto3
@@ -55,11 +55,11 @@ def configure_logging():
     )
 
 
-def run_processor(processor: Processor, frame: np.ndarray) -> tuple[Processor, ProcessorResult]:
+def run_processor(processor: Processor, future: Future[np.ndarray]) -> tuple[Processor, ProcessorResult]:
     if isinstance(processor, Extractor):
-        return processor, processor.extract(frame)
+        return processor, processor.extract(future.result())
 
-    return processor, processor.feed_frame(frame)
+    return processor, processor.feed_frame(future.result())
 
 
 def analyze_file(presigned_url) -> bytes:
@@ -99,14 +99,7 @@ def analyze_file(presigned_url) -> bytes:
         MeanCalculator('CI_V'),
         FHV13Calculator(),
     ]
-    processors = {
-        processor.name(): processor
-        for processor in chain(extractors, feature_calculators)
-    }
-    dependencies = {
-        processor.name(): [processor.depends_on()] if processor.depends_on() else []
-        for processor in chain(extractors, feature_calculators)
-    }
+    processors = extractors + feature_calculators
     buffer = io.StringIO()
     fieldnames = [
         'width',
@@ -119,6 +112,7 @@ def analyze_file(presigned_url) -> bytes:
     ]
     for calculator in feature_calculators:
         fieldnames.append(calculator.name())
+
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
     writer.writeheader()
     with Decoder(presigned_url) as decoder:
@@ -133,26 +127,20 @@ def analyze_file(presigned_url) -> bytes:
                     'pts': frame.pts,
                     'dts': frame.dts,
                 }
-                extractors_results = {}
+                extractors_results = defaultdict(Future)
                 frame_data = frame.to_ndarray()
-                graph = TopologicalSorter(dependencies)
-                graph.prepare()
-                while graph.is_active():
-                    ready_processors_names = graph.get_ready()
-                    futures = []
-                    for name in ready_processors_names:
-                        processor = processors[name]
-                        matrix = extractors_results.get(processor.depends_on(), frame_data)
-                        future = pool.submit(run_processor, processor, matrix)
-                        futures.append(future)
+                extractors_results[None].set_result(frame_data)
+                futures = []
+                for processor in processors:
+                    matrix_future = extractors_results[processor.depends_on()]
+                    futures.append(pool.submit(run_processor, processor, matrix_future))
 
-                    for future in as_completed(futures):
-                        calc, result = future.result()
-                        if isinstance(calc, Extractor):
-                            extractors_results[calc.name()] = result
-                        else:
-                            item[calc.name()] = result
-                    graph.done(*ready_processors_names)
+                for future in as_completed(futures):
+                    calc, result = future.result()
+                    if isinstance(calc, Extractor):
+                        extractors_results[calc.name()].set_result(result)
+                    else:
+                        item[calc.name()] = result
                 writer.writerow(item)
     return buffer.getvalue().encode()
 
@@ -313,16 +301,19 @@ def process_bucket(
         output_bucket,
     )
     with ProcessPoolExecutor(max_workers=concurrency, initializer=configure_logging) as pool:
-        for path in paths:
-            future = pool.submit(analyzer_and_uploader, path)
-            in_queue_futures.add(future)
-            if len(in_queue_futures) >= concurrency * 3:
-                for future in done:
-                    future.result()
-                done, in_queue_futures = wait(in_queue_futures, return_when=FIRST_COMPLETED)
+        try:
+            for path in paths:
+                future = pool.submit(analyzer_and_uploader, path)
+                in_queue_futures.add(future)
+                if len(in_queue_futures) >= concurrency * 3:
+                    for future in done:
+                        future.result()
+                    done, in_queue_futures = wait(in_queue_futures, return_when=FIRST_COMPLETED)
 
-        for future in as_completed(done):
-            future.result()
+            for future in as_completed(done):
+                future.result()
+        except KeyboardInterrupt:
+            pool.shutdown(cancel_futures=True)
 
 
 if __name__ == '__main__':
