@@ -4,6 +4,7 @@ import sys
 import boto3
 import click
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, URL
 
 
 def configure_logging():
@@ -22,14 +23,31 @@ def configure_logging():
 @click.option(
     '--s3-access-key-id',
     type=click.STRING,
-    envvar='CALCULATOR_S3_ACCESS_KEY_ID',
+    envvar='ENCODER_S3_ACCESS_KEY_ID',
     required=True
 )
 @click.option(
     '--s3-secret-access-key',
     type=click.STRING,
-    envvar='CALCULATOR_S3_SECRET_ACCESS_KEY',
+    envvar='ENCODER_S3_SECRET_ACCESS_KEY',
     required=True
+)
+@click.option(
+    '--database', '-d',
+    type=click.STRING,
+    required=True,
+)
+@click.option(
+    '--database-user',
+    type=click.STRING,
+    envvar='DB_USER',
+    required=True,
+)
+@click.option(
+    '--database-password',
+    type=click.STRING,
+    envvar='DB_PASSWORD',
+    required=True,
 )
 @click.option('--input-bucket', type=click.STRING, required=True)
 @click.option('--output-bucket', type=click.STRING, required=True)
@@ -37,9 +55,18 @@ def process_one(
     path: str,
     s3_access_key_id: str,
     s3_secret_access_key: str,
+    database: str,
+    database_user: str,
+    database_password: str,
     input_bucket: str,
     output_bucket: str,
 ):
+    engine = create_engine(URL.create(
+        'postgresql',
+        host=database,
+        username=database_user,
+        password=database_password,
+    ))
     s3_client = boto3.client(
         's3',
         endpoint_url='https://storage.yandexcloud.net/',
