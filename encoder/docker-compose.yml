@@ -1,0 +1,22 @@
+version: '3.9'
+services:
+  postgres:
+    container_name: database
+    image: "postgres:15"
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "password"
+      PGDATA: "/data/postgres"
+      POSTGRES_DB: video
+    volumes:
+       - postgres:/data/postgres
+       - ./docker_postgres_init.sql:/docker-entrypoint-initdb.d/docker_postgres_init.sql
+    ports:
+      - "15432:5432"
+    restart: unless-stopped
+  worker:
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile
