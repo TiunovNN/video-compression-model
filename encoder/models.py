@@ -1,9 +1,12 @@
 from enum import StrEnum
+from typing import Optional
 
-from sqlalchemy import Column, Enum, Identity, Integer, String, Text
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Enum, Identity, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Status(StrEnum):
@@ -16,15 +19,14 @@ class Status(StrEnum):
 class EncoderTask(Base):
     __tablename__ = 'encoder_tasks'
 
-    pk = Column(
-        Integer,
+    pk: Mapped[int] = mapped_column(
         Identity(start=0, minvalue=0, cycle=True),
         primary_key=True,
         index=True,
     )
-    source_url = Column(String(1024))
-    destination_url = Column(String(1024))
-    crf = Column(Integer)
-    qp = Column(Integer)
-    status = Column(Enum(Status))
-    details = Column(Text)
+    source_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    destination_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    crf: Mapped[Optional[int]] = mapped_column(nullable=True)
+    qp: Mapped[Optional[int]] = mapped_column(nullable=True)
+    status: Mapped[Status] = mapped_column(nullable=True)
+    details: Mapped[str] = mapped_column(Text, nullable=True)
