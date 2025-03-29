@@ -28,5 +28,5 @@ class EncoderTask(Base):
     destination_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     crf: Mapped[Optional[int]] = mapped_column(nullable=True)
     qp: Mapped[Optional[int]] = mapped_column(nullable=True)
-    status: Mapped[Status] = mapped_column(nullable=True)
+    status: Mapped[Status] = mapped_column(nullable=True, default=Status.ENQUEUED)
     details: Mapped[str] = mapped_column(Text, nullable=True)
