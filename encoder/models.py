@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Optional
 
-from sqlalchemy import Enum, Identity, String, Text
+from sqlalchemy import Identity, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 

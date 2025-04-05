@@ -1,7 +1,5 @@
-version: '3.9'
 services:
-  postgres:
-    container_name: database
+  database:
     image: "postgres:15"
     environment:
       POSTGRES_USER: "postgres"
@@ -9,11 +7,15 @@ services:
       PGDATA: "/data/postgres"
       POSTGRES_DB: video
     volumes:
-       - postgres:/data/postgres
+       - ./postgres:/data/postgres
        - ./docker_postgres_init.sql:/docker-entrypoint-initdb.d/docker_postgres_init.sql
     ports:
       - "15432:5432"
     restart: unless-stopped
+  redis:
+    image: "valkey/valkey"
+    ports:
+      - "6379:6379"
   worker:
     env_file:
       - .env

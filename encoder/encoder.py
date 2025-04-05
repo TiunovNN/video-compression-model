@@ -13,6 +13,7 @@ from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, EncoderTask, Status
+from worker import transcode_video_task
 
 
 def configure_logging():
@@ -211,65 +212,61 @@ def process_one(
 @click.command()
 @click.option(
     '--database', '-d',
+    envvar='DATABASE_HOST',
     type=click.STRING,
     required=True,
 )
 @click.option(
     '--database-user',
     type=click.STRING,
-    envvar='DB_USER',
+    envvar='DATABASE_USER',
     required=False,
 )
 @click.option(
     '--database-password',
     type=click.STRING,
-    envvar='DB_PASSWORD',
+    envvar='DATABASE_PASSWORD',
     required=False,
 )
 @click.option(
     '--database-driver',
+    envvar='DATABASE_DRIVER',
     type=click.STRING,
-    default='sqlite'
+    default='sqlite',
+)
+@click.option(
+    '--database-name',
+    envvar='DATABASE_NAME',
+    type=click.STRING,
+)
+@click.option(
+    '--database-port',
+    envvar='DATABASE_PORT',
+    type=click.INT,
+    default=5432,
 )
 def create_table(
     database: str,
     database_user: str,
     database_password: str,
     database_driver: str,
+    database_name: str,
+    database_port: int,
 ):
     url = URL.create(
         drivername=database_driver,
         host=database,
         username=database_user,
         password=database_password,
+        database=database_name,
+        port=database_port,
     ).render_as_string(hide_password=False)
+    print(url)
     engine = create_engine(url)
     Base.metadata.create_all(engine)
 
 
 @click.command()
-@click.option(
-    '--database', '-d',
-    type=click.STRING,
-    required=True,
-)
-@click.option(
-    '--database-user',
-    type=click.STRING,
-    envvar='DB_USER',
-    required=False,
-)
-@click.option(
-    '--database-password',
-    type=click.STRING,
-    envvar='DB_PASSWORD',
-    required=False,
-)
-@click.option(
-    '--database-driver',
-    type=click.STRING,
-    default='sqlite'
-)
 @click.option(
     '--qp-min',
     type=click.INT,
@@ -293,69 +290,40 @@ def create_table(
 @click.option(
     '--s3-access-key-id',
     type=click.STRING,
-    envvar='ENCODER_S3_ACCESS_KEY_ID',
+    envvar='S3_ACCESS_KEY_ID',
     required=True
 )
 @click.option(
     '--s3-secret-access-key',
     type=click.STRING,
-    envvar='ENCODER_S3_SECRET_ACCESS_KEY',
+    envvar='S3_SECRET_ACCESS_KEY',
     required=True
 )
 @click.option('--input-bucket', type=click.STRING, required=True)
-@click.option('--output-bucket', type=click.STRING, required=True)
 def generate_tasks(
     s3_access_key_id: str,
     s3_secret_access_key: str,
     input_bucket: str,
-    output_bucket: str,
-    database: str,
-    database_user: str,
-    database_password: str,
-    database_driver: str,
     qp_min: int,
     qp_max: int,
     crf_min: int,
     crf_max: int,
 ):
-    url = URL.create(
-        drivername=database_driver,
-        host=database,
-        username=database_user,
-        password=database_password,
-    ).render_as_string(hide_password=False)
-    engine = create_engine(url)
-    session_maker = sessionmaker(engine)
     s3_client = boto3.client(
         's3',
         endpoint_url='https://storage.yandexcloud.net/',
         aws_access_key_id=s3_access_key_id,
         aws_secret_access_key=s3_secret_access_key,
     )
-    with session_maker.begin() as session:
-        for path in iter_over_bucket(s3_client, input_bucket):
-            source_url = f's3://{input_bucket}/{path}'
-            prefix, _, filename = path.rpartition('/')
-            base_name, _, ext = path.rpartition('.')
-            for qp in range(qp_min, qp_max + 1):
-                if not session.query(EncoderTask).filter_by(source_url=source_url, qp=qp).first():
-                    session.add(
-                        EncoderTask(
-                            source_url=source_url,
-                            destination_url=f's3://{output_bucket}/{prefix}/{base_name}_qp_{qp}.{ext}',
-                            qp=qp,
-                        )
-                    )
-            for crf in range(crf_min, crf_max + 1):
-                if not session.query(EncoderTask).filter_by(source_url=source_url, crf=crf).first():
-                    session.add(
-                        EncoderTask(
-                            source_url=source_url,
-                            destination_url=f's3://{output_bucket}/{prefix}/{base_name}_crf_{crf}.{ext}',
-                            crf=crf,
-                        )
-                    )
-        session.commit()
+    for path in iter_over_bucket(s3_client, input_bucket):
+        source_url = f's3://{input_bucket}/{path}'
+        prefix, _, filename = path.rpartition('/')
+        base_name, _, ext = path.rpartition('.')
+        for qp in range(qp_min, qp_max + 1):
+            transcode_video_task.delay(source_url=source_url, qp=qp)
+
+        for crf in range(crf_min, crf_max + 1):
+            transcode_video_task.delay(source_url=source_url, crf=crf)
 
 
 if __name__ == '__main__':
