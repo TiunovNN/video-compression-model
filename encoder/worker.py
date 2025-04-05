@@ -229,6 +229,7 @@ def configure_celery():
         database_name=os.getenv('DATABASE_NAME'),
         database_port=os.getenv('DATABASE_PORT'),
     )
+    app.conf.broker_transport_options = {'is_secure': True}
 
     return app
 

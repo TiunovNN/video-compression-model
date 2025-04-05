@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 
 WORKDIR /encoder
-RUN apt update \
-    && apt install -y ffmpeg libpq-dev \
+RUN apt-get update \
+    && apt-get install -y ffmpeg libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 ADD requirements.txt .
