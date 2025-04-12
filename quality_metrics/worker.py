@@ -3,16 +3,22 @@ import io
 import logging
 import os
 import sys
+from concurrent.futures import FIRST_COMPLETED, as_completed, wait
+from concurrent.futures.thread import ThreadPoolExecutor
 from functools import cached_property
 from urllib.parse import urlparse
 
 import boto3
+from botocore.exceptions import ClientError
 from celery import Celery, Task
 from dotenv import load_dotenv
 from sqlalchemy import URL
 
 from decoder import Decoder
-from extractors import (Extractor, UExtractor, VExtractor, YExtractor)
+from extractors import (
+    Extractor,
+    YExtractor,
+)
 from metrics import (
     MSSSIMCalculator,
     MetricCalculator,
@@ -24,8 +30,6 @@ Processor = Extractor | MetricCalculator
 def analyze_file(source_url, distorted_url) -> bytes:
     extractors = [
         YExtractor(),
-        UExtractor(),
-        VExtractor(),
     ]
     extractors = {
         extractor.name(): extractor
@@ -33,8 +37,6 @@ def analyze_file(source_url, distorted_url) -> bytes:
     }
     metric_calculator = [
         MSSSIMCalculator('Y'),
-        MSSSIMCalculator('U'),
-        MSSSIMCalculator('V'),
     ]
     buffer = io.StringIO()
     fieldnames = [
@@ -72,7 +74,6 @@ def analyze_file(source_url, distorted_url) -> bytes:
                 distorted_image = extractor.extract(distorted_array)
                 value = calculator.feed_frame(source_image, distorted_image)
                 item[calculator.name()] = value
-
             writer.writerow(item)
     return buffer.getvalue().encode()
 
@@ -108,6 +109,17 @@ class QualityAnalyzeTask(Task):
             ExpiresIn=3600 * 24,
         )
         parsed_distorted = urlparse(distorted_url)
+        new_path = parsed_distorted.path.lstrip('/') + '.csv'
+        try:
+            self.s3_client.head_object(
+                Bucket=self.output_bucket,
+                Key=new_path,
+            )
+            logging.info(f'File {distorted_url} already analyzed')
+            return
+        except ClientError:
+            pass
+
         presigned_distorted_url = self.s3_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': parsed_distorted.netloc, 'Key': parsed_distorted.path.lstrip('/')},
@@ -116,13 +128,13 @@ class QualityAnalyzeTask(Task):
         logging.info(f'Analyzing file {distorted_url}')
         csv_data = analyze_file(presigned_source_url, presigned_distorted_url)
         logging.info(
-            f'Uploading {len(csv_data)} to {self.output_bucket}/{parsed_distorted.path}.csv'
+            f'Uploading {len(csv_data)} to {self.output_bucket}/{new_path}.csv'
         )
         self.s3_client.put_object(
             Bucket=self.output_bucket,
-            Key=f'{parsed_distorted.path}.csv',
+            Key=new_path,
             Body=csv_data,
-            Metadata={'Content-Type': 'text/csv'}
+            Metadata={'Content-Type': 'text/csv'},
         )
 
 

@@ -1,0 +1,23 @@
+services:
+  database:
+    image: "postgres:15"
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "password"
+      PGDATA: "/data/postgres"
+      POSTGRES_DB: video
+    volumes:
+       - ./postgres:/data/postgres
+       - ./docker_postgres_init.sql:/docker-entrypoint-initdb.d/docker_postgres_init.sql
+    ports:
+      - "15432:5432"
+    restart: unless-stopped
+  redis:
+    image: "valkey/valkey"
+    ports:
+      - "6379:6379"
+  worker:
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/quality_metrics:7
+    scale: 1
+    env_file:
+      - .env

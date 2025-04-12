@@ -1,8 +1,9 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
-from scipy import signal
+from scipy import signal, ndimage
 from skimage.transform import pyramid_reduce
 from skimage.util import img_as_float
 
@@ -45,8 +46,6 @@ class MSSSIMCalculator(MetricCalculator):
         self.extractor = extractor
         self._name = name
         self.max_val = max_val
-        # self.windows_size = windows_size
-        # self.sigma = sigma
         # Default weights come from the Wang et al. paper
         self.weights = np.array([0.0448, 0.2856, 0.3001, 0.2363, 0.1333])
         self.levels = len(self.weights)
@@ -63,11 +62,9 @@ class MSSSIMCalculator(MetricCalculator):
         frame_source: Optional[np.ndarray],
         frame_distorted: Optional[np.ndarray],
     ) -> Optional[float]:
-        # Convert images to float and grayscale if they are RGB
         image_source = img_as_float(frame_source)
         image_distorted = img_as_float(frame_distorted)
 
-        # Validate inputs
         if image_source.shape != image_distorted.shape:
             raise ValueError("Input images must have the same dimensions")
 
@@ -82,11 +79,8 @@ class MSSSIMCalculator(MetricCalculator):
 
         ssim_map = self.ssim_single_scale(image_source, image_distorted, True)
         mssim.append(np.mean(ssim_map))
-        # Convert to numpy arrays
         mssim = np.array(mssim)
 
-        # Calculate final MS-SSIM
-        # The last scale uses both SSIM and CS, other scales use only CS
         ms_ssim_val = np.prod(mssim ** self.weights)
 
         return float(ms_ssim_val)
@@ -107,16 +101,16 @@ class MSSSIMCalculator(MetricCalculator):
         frame_distorted: np.ndarray,
         calc_luminance: bool
     ) -> np.ndarray:
-        mu1 = signal.convolve2d(frame_source, self.window, mode='valid', boundary='symm')
-        mu2 = signal.convolve2d(frame_distorted, self.window, mode='valid', boundary='symm')
+        mu1 = signal.fftconvolve(frame_source, self.window, mode='same')
+        mu2 = signal.fftconvolve(frame_distorted, self.window, mode='same')
 
         mu1_sq = mu1 ** 2
         mu2_sq = mu2 ** 2
         mu1_mu2 = mu1 * mu2
 
-        sigma1_sq = signal.convolve2d(frame_source ** 2, self.window, mode='valid', boundary='symm') - mu1_sq
-        sigma2_sq = signal.convolve2d(frame_distorted ** 2, self.window, mode='valid', boundary='symm') - mu2_sq
-        sigma12 = signal.convolve2d(frame_source * frame_distorted, self.window, mode='valid', boundary='symm') - mu1_mu2
+        sigma1_sq = signal.fftconvolve(frame_source ** 2, self.window, mode='same') - mu1_sq
+        sigma2_sq = signal.fftconvolve(frame_distorted ** 2, self.window, mode='same') - mu2_sq
+        sigma12 = signal.fftconvolve(frame_source * frame_distorted, self.window, mode='same') - mu1_mu2
 
         numerator = 2 * sigma12 + self.C2
         denominator = sigma1_sq + sigma2_sq + self.C2
