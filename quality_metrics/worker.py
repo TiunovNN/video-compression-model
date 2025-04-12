@@ -163,6 +163,7 @@ def configure_celery():
         database_password=os.getenv('DATABASE_PASSWORD'),
         database_name=os.getenv('DATABASE_NAME'),
         database_port=os.getenv('DATABASE_PORT'),
+        task_default_queue='quality_analyze'
     )
     app.conf.broker_transport_options = {'is_secure': True}
 
