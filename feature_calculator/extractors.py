@@ -44,7 +44,7 @@ class UExtractor(Extractor):
     def extract(self, frame: np.ndarray) -> np.ndarray:
         if frame.ndim == 3:
             # take only U component
-            frame = frame[2]
+            frame = frame[1]
 
         assert frame.ndim == 2, frame.ndim
         return frame

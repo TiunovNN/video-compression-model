@@ -15,7 +15,7 @@
 
 1. Поднимаем базу и создаем таблицы
 ```shell
-python encoder.py create-table
+python manage.py create-table
 ```
 2. Запускаем воркеры где нужно
 ```shell
@@ -23,5 +23,5 @@ docker-compose up -d
 ```
 3. Создаем задачи в очереди
 ```shell
-python encoder.py generate-tasks --qp-min 25 --qp-max 40 --crf-min 17 --crf-max 30 --input-bucket ${bucket}
+python manage.py generate-tasks --qp-min 25 --qp-max 40 --crf-min 17 --crf-max 30 --input-bucket ${bucket}
 ```

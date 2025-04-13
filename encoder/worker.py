@@ -123,10 +123,6 @@ class TranscodeVideoTask(Task):
             raise RuntimeError(f'Unknown error {e}') from e
 
     def run(self, source_url: str, crf: Optional[int] = None, qp: Optional[int] = None):
-        """Celery task to process a single encoder task.
-
-        Uses session_maker and s3_client из базового класса EncoderProcessorTask.
-        """
         with self.session_maker.begin() as session:
             task = session.query(EncoderTask).filter_by(
                 source_url=source_url,

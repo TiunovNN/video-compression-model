@@ -159,5 +159,5 @@ def generate_tasks(
 if __name__ == '__main__':
     load_dotenv()
     configure_logging()
-    cli = click.Group(commands=[create_table, generate_tasks, process_one])
+    cli = click.Group(commands=[create_table, generate_tasks])
     cli()
