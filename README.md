@@ -25,3 +25,16 @@ docker-compose up -d
 ```shell
 python manage.py generate-tasks --qp-min 25 --qp-max 40 --crf-min 17 --crf-max 30 --input-bucket ${bucket}
 ```
+
+## Quality metrics
+
+Код для подсчета качества видео на основе метрики MS-SSIM
+
+1. Запускаем воркеры
+```shell
+docker-compose up -d
+```
+2. Создаем задачи в очереди
+```shell
+python manage.py generate-tasks
+```
