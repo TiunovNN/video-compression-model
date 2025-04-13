@@ -54,28 +54,46 @@ def analyze_file(source_url, distorted_url) -> bytes:
 
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
     writer.writeheader()
-    with Decoder(source_url) as decoder_source, Decoder(distorted_url) as decoder_distorted:
-        for frame_source, frame_distorted in zip(decoder_source, decoder_distorted):
-            item = {
-                'source_format': frame_source.format.name,
-                'distorted_format': frame_distorted.format.name,
-                'source_key_frame': int(frame_source.key_frame),
-                'distorted_key_frame': int(frame_distorted.key_frame),
-                'source_time': frame_source.time,
-                'distorted_time': frame_distorted.time,
-                'source_pts': frame_source.pts,
-                'distorted_pts': frame_source.pts,
-            }
-            source_array = frame_source.to_ndarray()
-            distorted_array = frame_distorted.to_ndarray()
-            for calculator in metric_calculator:
-                extractor = extractors[calculator.depends_on()]
-                source_image = extractor.extract(source_array)
-                distorted_image = extractor.extract(distorted_array)
-                value = calculator.feed_frame(source_image, distorted_image)
-                item[calculator.name()] = value
-            writer.writerow(item)
+    pending = set()
+    with ThreadPoolExecutor() as pool:
+        with Decoder(source_url) as decoder_source, Decoder(distorted_url) as decoder_distorted:
+            for frame_source, frame_distorted in zip(decoder_source, decoder_distorted):
+                pending.add(pool.submit(
+                    process_frame,
+                    extractors,
+                    frame_distorted,
+                    frame_source,
+                    metric_calculator,
+                ))
+                if len(pending) > pool._max_workers * 2:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        writer.writerow(future.result())
+            for future in as_completed(pending):
+                writer.writerow(future.result())
     return buffer.getvalue().encode()
+
+
+def process_frame(extractors, frame_distorted, frame_source, metric_calculator):
+    item = {
+        'source_format': frame_source.format.name,
+        'distorted_format': frame_distorted.format.name,
+        'source_key_frame': int(frame_source.key_frame),
+        'distorted_key_frame': int(frame_distorted.key_frame),
+        'source_time': frame_source.time,
+        'distorted_time': frame_distorted.time,
+        'source_pts': frame_source.pts,
+        'distorted_pts': frame_source.pts,
+    }
+    source_array = frame_source.to_ndarray()
+    distorted_array = frame_distorted.to_ndarray()
+    for calculator in metric_calculator:
+        extractor = extractors[calculator.depends_on()]
+        source_image = extractor.extract(source_array)
+        distorted_image = extractor.extract(distorted_array)
+        value = calculator.feed_frame(source_image, distorted_image)
+        item[calculator.name()] = value
+    return item
 
 
 class QualityAnalyzeTask(Task):
@@ -128,7 +146,7 @@ class QualityAnalyzeTask(Task):
         logging.info(f'Analyzing file {distorted_url}')
         csv_data = analyze_file(presigned_source_url, presigned_distorted_url)
         logging.info(
-            f'Uploading {len(csv_data)} to {self.output_bucket}/{new_path}.csv'
+            f'Uploading {len(csv_data)} to {self.output_bucket}/{new_path}'
         )
         self.s3_client.put_object(
             Bucket=self.output_bucket,
