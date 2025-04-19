@@ -55,6 +55,10 @@ def analyze_file(source_url, distorted_url) -> bytes:
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
     writer.writeheader()
     pending = set()
+    if max_process := os.getenv('MAX_PROCESS'):
+        max_process = int(max_process)
+    else:
+        max_process = 999
     with ThreadPoolExecutor() as pool:
         with Decoder(source_url) as decoder_source, Decoder(distorted_url) as decoder_distorted:
             for frame_source, frame_distorted in zip(decoder_source, decoder_distorted):
@@ -65,7 +69,7 @@ def analyze_file(source_url, distorted_url) -> bytes:
                     frame_source,
                     metric_calculator,
                 ))
-                if len(pending) > pool._max_workers * 2:
+                if len(pending) > min(pool._max_workers * 2, max_process):
                     done, pending = wait(pending, return_when=FIRST_COMPLETED)
                     for future in done:
                         writer.writerow(future.result())
