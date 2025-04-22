@@ -2,7 +2,6 @@ import logging
 import shlex
 import shutil
 import subprocess
-import sys
 from functools import cached_property
 from tempfile import NamedTemporaryFile
 from typing import Optional
@@ -10,12 +9,11 @@ from uuid import uuid4
 
 import boto3
 from celery import Celery, Task as CeleryTask
-from dotenv import load_dotenv
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import Task, TaskStatus
-from settings import Settings, get_settings
+from settings import Settings
 
 
 class TranscodeVideoTask(CeleryTask):
@@ -169,17 +167,6 @@ class TranscodeVideoTask(CeleryTask):
         ]
 
 
-def configure_logging():
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setLevel(logging.INFO)
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s\n',
-        handlers=[handler],
-        force=True,
-    )
-
-
 def configure_celery(settings: Settings):
     app = Celery('encoder_tasks')
 
@@ -197,10 +184,3 @@ def configure_celery(settings: Settings):
     app.conf.broker_transport_options = {'is_secure': True}
 
     return app
-
-
-if __name__ == '__main__':
-    configure_logging()
-    load_dotenv()
-    celery = configure_celery(get_settings())
-    transcode_video_task = celery.register_task(TranscodeVideoTask)
