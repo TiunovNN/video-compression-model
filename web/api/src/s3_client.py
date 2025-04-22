@@ -32,7 +32,7 @@ class S3Client:
 
     async def upload_file(self, file: io.FileIO, object_name: str) -> str:
         try:
-            await self.s3.upload_file(file, self.bucket_name, object_name)
+            await self.s3.upload_fileobj(file, self.bucket_name, object_name)
         except Exception as e:
             raise FailedUploadS3(object_name, e)
         return object_name

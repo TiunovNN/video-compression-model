@@ -1,14 +1,16 @@
+import io
 import random
 from http import HTTPStatus
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
+from uuid import uuid4
 
 import pytest
-from anys import ANY_AWARE_DATETIME_STR, ANY_INT, AnyMatch
+from anys import ANY_AWARE_DATETIME_STR, ANY_INT, AnyInstance, AnyMatch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from database import Base
+from database import Base, Task, TaskStatus
 from deps import get_db, get_s3_client, get_transcode_video_task
 from main import app
 from s3_client import S3Client
@@ -72,7 +74,7 @@ async def client(db_session, s3_client_mock, transcode_video_mock):
         yield client
 
 
-async def test_create_task(client):
+async def test_create_task(client, s3_client_mock, transcode_video_mock):
     mp4_data = random.randbytes(100)
     response = await client.post(
         '/tasks',
@@ -89,4 +91,157 @@ async def test_create_task(client):
         'output_file': None,
         'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
         'error_message': None,
+    }
+    assert s3_client_mock.s3.upload_fileobj.call_args == call(
+        AnyInstance(io.IOBase),
+        'test-bucket',
+        response.json()['source_file']
+    )
+    assert transcode_video_mock.delay.call_args == call(
+        response.json()['id'],
+    )
+
+
+@pytest.fixture()
+async def generate_tasks(db_session):
+    tasks = []
+    for status in TaskStatus:
+        task = await create_task(db_session, status)
+        tasks.append(task)
+    return tasks
+
+
+async def create_task(db_session, status) -> Task:
+    task = Task(
+        status=TaskStatus.PENDING,
+        source_file=f'source/{uuid4().hex}.mp4',
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+    if status != TaskStatus.PENDING:
+        task.status = status
+        if status == TaskStatus.FAILED:
+            task.error_message = 'test error'
+        elif status == TaskStatus.COMPLETED:
+            task.output_file = f'encoded/{uuid4().hex}.mp4'
+        await db_session.commit()
+    return task
+
+
+async def test_list_tasks(client, generate_tasks):
+    response = await client.get('/tasks')
+    assert response.status_code == HTTPStatus.OK, response.json()
+    assert response.json() == {
+        'tasks': [
+            {
+                'id': ANY_INT,
+                'status': 'pending',
+                'created_at': ANY_AWARE_DATETIME_STR,
+                'updated_at': ANY_AWARE_DATETIME_STR,
+                'output_file': None,
+                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
+                'error_message': None,
+            },
+            {
+                'id': ANY_INT,
+                'status': 'processing',
+                'created_at': ANY_AWARE_DATETIME_STR,
+                'updated_at': ANY_AWARE_DATETIME_STR,
+                'output_file': None,
+                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
+                'error_message': None,
+            },
+            {
+                'id': ANY_INT,
+                'status': 'completed',
+                'created_at': ANY_AWARE_DATETIME_STR,
+                'updated_at': ANY_AWARE_DATETIME_STR,
+                'output_file': AnyMatch('encoded/[0-9a-f]{32}.mp4'),
+                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
+                'error_message': None,
+            },
+            {
+                'id': ANY_INT,
+                'status': 'failed',
+                'created_at': ANY_AWARE_DATETIME_STR,
+                'updated_at': ANY_AWARE_DATETIME_STR,
+                'output_file': None,
+                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
+                'error_message': 'test error',
+            },
+        ]
+    }
+
+
+async def test_get_pending_task(client, db_session, s3_client_mock):
+    pending_task = await create_task(db_session, TaskStatus.PENDING)
+    response = await client.get(f'/tasks/{pending_task.id}')
+    assert response.status_code == HTTPStatus.OK, response.json()
+    assert response.json() == {
+        'id': pending_task.id,
+        'status': 'pending',
+        'created_at': ANY_AWARE_DATETIME_STR,
+        'updated_at': ANY_AWARE_DATETIME_STR,
+        'output_file': None,
+        'source_file': pending_task.source_file,
+        'error_message': None,
+        'download_url': None,
+    }
+
+
+async def test_get_processing_task(client, db_session, s3_client_mock):
+    processing_task = await create_task(db_session, TaskStatus.PROCESSING)
+    response = await client.get(f'/tasks/{processing_task.id}')
+    assert response.status_code == HTTPStatus.OK, response.json()
+    assert response.json() == {
+        'id': processing_task.id,
+        'status': 'processing',
+        'created_at': ANY_AWARE_DATETIME_STR,
+        'updated_at': ANY_AWARE_DATETIME_STR,
+        'output_file': None,
+        'source_file': processing_task.source_file,
+        'error_message': None,
+        'download_url': None,
+    }
+
+
+async def test_get_completed_task(client, db_session, s3_client_mock):
+    s3_client_mock.s3.generate_presigned_url.return_value = 'https://test.s3.amazonaws.com/test.mp4?signed_url'
+    completed_task = await create_task(db_session, TaskStatus.COMPLETED)
+    response = await client.get(f'/tasks/{completed_task.id}')
+    assert response.status_code == HTTPStatus.OK, response.json()
+    assert response.json() == {
+        'id': completed_task.id,
+        'status': 'completed',
+        'created_at': ANY_AWARE_DATETIME_STR,
+        'updated_at': ANY_AWARE_DATETIME_STR,
+        'output_file': completed_task.output_file,
+        'source_file': completed_task.source_file,
+        'error_message': None,
+        'download_url': 'https://test.s3.amazonaws.com/test.mp4?signed_url',
+    }
+    assert s3_client_mock.s3.generate_presigned_url.call_args == call(
+        'get_object',
+        Params={
+            'Bucket': 'test-bucket',
+            'Key': completed_task.output_file
+        },
+        ExpiresIn=100,
+    )
+
+
+async def test_get_failed_task(client, db_session, s3_client_mock):
+    failed_task = await create_task(db_session, TaskStatus.FAILED)
+    response = await client.get(f'/tasks/{failed_task.id}')
+    assert response.status_code == HTTPStatus.OK, response.json()
+    assert response.json() == {
+        'id': failed_task.id,
+        'status': 'failed',
+        'created_at': ANY_AWARE_DATETIME_STR,
+        'updated_at': ANY_AWARE_DATETIME_STR,
+        'output_file': None,
+        'source_file': failed_task.source_file,
+        'error_message': 'test error',
+        'download_url': None,
     }

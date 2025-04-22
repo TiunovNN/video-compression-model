@@ -86,7 +86,8 @@ async def get_task(
     Get details of a specific task and a download URL if the task is completed
     """
     statement = select(Task).filter(Task.id == task_id)
-    task = await db.execute(statement).scalars().first()
+    result = await db.execute(statement)
+    task = result.scalars().first()
     if not task:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail='Task not found')
 
