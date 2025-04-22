@@ -1,0 +1,43 @@
+services:
+  database:
+    image: "postgres:15"
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "password"
+      PGDATA: "/data/postgres"
+      POSTGRES_DB: video_encoding
+    volumes:
+       - ./postgres:/data/postgres
+    ports:
+      - "15432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready", "-d", "video_encoding", "-U", "postgres"]
+      interval: 1s
+      timeout: 60s
+      retries: 5
+      start_period: 80s
+
+  redis:
+    image: "valkey/valkey"
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+  worker:
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_api:1
+    ports:
+      - "8000:80"
+    environment:
+      DATABASE_URL: postgresql://postgres:password@database:5432/video_encoding
+      CELERY_BROKER_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: https://storage.yandexcloud.net/
+      S3_BUCKET: tnn-api-encoded
+      PRESIGNED_URL_EXPIRATION: '3600'
+    env_file:
+      - .env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

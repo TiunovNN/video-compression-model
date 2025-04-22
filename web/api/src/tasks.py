@@ -185,7 +185,7 @@ def configure_celery(settings: Settings):
 
     app.conf.update(
         broker_url=settings.CELERY_BROKER_URL,
-        result_backend=settings.DATABASE_URL,
+        result_backend=f'db+{settings.DATABASE_URL}',
         s3_endpoint_url=settings.S3_ENDPOINT_URL,
         s3_access_key_id=settings.AWS_ACCESS_KEY_ID,
         s3_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,

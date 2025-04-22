@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Annotated
 
@@ -6,12 +7,24 @@ from fastapi import FastAPI, HTTPException, Query, UploadFile
 from sqlalchemy import select
 
 import schemas
-from database import Task, TaskStatus
-from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI
+from database import Task, TaskStatus, async_engine, Base
+from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI, get_db
 from s3_client import S3Exception
 from schemas import TaskResponse
+from settings import get_settings
 
-app = FastAPI(title="Video Encoding Service")
+
+@asynccontextmanager
+async def on_startup(app: FastAPI):
+    settings = get_settings()
+    engine = async_engine(settings)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    yield
+
+
+app = FastAPI(title="Video Encoding Service", lifespan=on_startup)
 
 
 @app.post('/tasks', status_code=HTTPStatus.CREATED)
@@ -33,7 +46,7 @@ async def create_encoding_task(
     s3_object_name = s3_client.generate_unique_filename(file.filename)
     s3_key = f"source/{s3_object_name}"
     try:
-        await s3_client.upload_file(file.file, s3_key)
+        await s3_client.upload_file(file.file, s3_key, content_type)
     except S3Exception as e:
         raise HTTPException(
             status_code=HTTPStatus.BAD_GATEWAY,
@@ -70,10 +83,12 @@ async def list_tasks(
         statement = statement.filter(Task.status.in_(statuses))
     statement = statement.order_by(Task.created_at).offset(skip).limit(limit)
     result = await db.execute(statement)
-    return schemas.TaskListResponse(tasks=[
-        schemas.TaskResponse.model_validate(item)
-        for item in result.scalars().all()
-    ])
+    return schemas.TaskListResponse(
+        tasks=[
+            schemas.TaskResponse.model_validate(item)
+            for item in result.scalars().all()
+        ]
+    )
 
 
 @app.get('/tasks/{task_id}', response_model=schemas.TaskDetailResponse)

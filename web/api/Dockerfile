@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y ffmpeg libpq-dev \
+    && apt-get install -y libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 ADD requirements.txt .
@@ -12,5 +12,6 @@ ADD src /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
+EXPOSE 80
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "[::]", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--log-config=log_conf.yaml"]

@@ -1,6 +1,7 @@
 import io
 import os
 import uuid
+from typing import Optional, Self
 
 from aioboto3 import Session
 
@@ -21,18 +22,47 @@ class FailedUploadS3(S3Exception):
 class S3Client:
     def __init__(self, settings: Settings):
         self.session = Session()
-        self.s3 = self.session.client(
+        self.s3_client_context = self.session.client(
             's3',
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             endpoint_url=settings.S3_ENDPOINT_URL,
         )
+        self.s3 = None
         self.bucket_name = settings.S3_BUCKET
         self.presigned_url_expiration = settings.PRESIGNED_URL_EXPIRATION
 
-    async def upload_file(self, file: io.FileIO, object_name: str) -> str:
+    async def __aenter__(self) -> Self:
+        if self.s3 is not None:
+            raise RuntimeError('S3Client already initialized')
+
+        self.s3 = await self.s3_client_context.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.s3 is None:
+            raise RuntimeError('S3Client is not initialized')
+
+        s3 = self.s3
+        self.s3 = None
+        return await s3.__aexit__(exc_type, exc_val, exc_tb)
+
+    async def upload_file(
+        self,
+        file: io.FileIO,
+        object_name: str,
+        content_type: Optional[str] = None
+    ) -> str:
+        extra_data = {}
+        if content_type:
+            extra_data['ContentType'] = content_type
         try:
-            await self.s3.upload_fileobj(file, self.bucket_name, object_name)
+            await self.s3.upload_fileobj(
+                file,
+                self.bucket_name,
+                object_name,
+                ExtraArgs=extra_data,
+            )
         except Exception as e:
             raise FailedUploadS3(object_name, e)
         return object_name

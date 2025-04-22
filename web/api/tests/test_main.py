@@ -95,7 +95,8 @@ async def test_create_task(client, s3_client_mock, transcode_video_mock):
     assert s3_client_mock.s3.upload_fileobj.call_args == call(
         AnyInstance(io.IOBase),
         'test-bucket',
-        response.json()['source_file']
+        response.json()['source_file'],
+        ExtraArgs={'ContentType': 'video/mp4'}
     )
     assert transcode_video_mock.delay.call_args == call(
         response.json()['id'],
