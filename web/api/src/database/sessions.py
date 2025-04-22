@@ -1,3 +1,4 @@
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -5,7 +6,9 @@ from settings import Settings
 
 
 def async_engine(settings: Settings):
-    return create_async_engine(settings.DATABASE_URL, echo=True)
+    url = make_url(settings.DATABASE_URL)
+    url.set(drivername='postgresql+asyncpg')
+    return create_async_engine(url.render_as_string(False), echo=True)
 
 
 def async_session(settings: Settings) -> AsyncSession:

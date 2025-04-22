@@ -1,12 +1,14 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from database import TaskStatus
 
 
 class TaskBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     source_file: str
 
 
@@ -21,9 +23,6 @@ class TaskResponse(TaskBase):
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        orm_mode = True
 
 
 class TaskListResponse(BaseModel):

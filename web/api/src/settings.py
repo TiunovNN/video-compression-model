@@ -1,5 +1,3 @@
-from functools import cache
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +14,9 @@ class Settings(BaseSettings):
 
     # Presigned URL expiration (in seconds)
     PRESIGNED_URL_EXPIRATION: int = 3600
+
+    CELERY_BROKER_URL: str = 'redis://localhost:6379/0'
+    CELERY_QUEUE_NAME: str = 'api_transcoding'
 
 
 def get_settings() -> Settings:

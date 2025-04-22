@@ -1,10 +1,12 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
+from functools import partial
 from typing import Optional
 
 from sqlalchemy import DateTime, Identity, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
+from sqlalchemy_utc import utcnow, UtcDateTime
 
 
 class Base(DeclarativeBase):
@@ -26,5 +28,12 @@ class Task(Base):
     output_file: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     status: Mapped[TaskStatus] = mapped_column(default=TaskStatus.PENDING, nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        server_default=utcnow()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        server_default=utcnow(),
+        onupdate=utcnow(),
+    )

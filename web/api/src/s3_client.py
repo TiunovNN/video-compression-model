@@ -1,3 +1,4 @@
+import io
 import os
 import uuid
 
@@ -29,11 +30,11 @@ class S3Client:
         self.bucket_name = settings.S3_BUCKET
         self.presigned_url_expiration = settings.PRESIGNED_URL_EXPIRATION
 
-    async def upload_file(self, file_path: str, object_name: str) -> str:
+    async def upload_file(self, file: io.FileIO, object_name: str) -> str:
         try:
-            await self.s3.upload_file(file_path, self.bucket_name, object_name)
+            await self.s3.upload_file(file, self.bucket_name, object_name)
         except Exception as e:
-            raise FailedUploadS3(file_path, e)
+            raise FailedUploadS3(object_name, e)
         return object_name
 
     async def generate_presigned_url(self, object_name):
