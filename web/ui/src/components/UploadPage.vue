@@ -208,7 +208,7 @@ export default {
         goToTaskPage() {
             if (this.taskId) {
                 // Перенаправление на страницу задачи
-                this.$router.push(`/tasks/${this.taskId}`);
+                this.$router.push(`/view/${this.taskId}`);
             }
         }
     }

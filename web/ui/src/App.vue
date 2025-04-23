@@ -3,7 +3,7 @@
   <h1>Encoding Video!</h1>
   <nav class="tabs-navigation">
     <RouterLink to="/" class="tab-link">Список задач</RouterLink>
-    <RouterLink to="/tasks/create" class="tab-link">Загрузить видео</RouterLink>
+    <RouterLink to="/create" class="tab-link">Загрузить видео</RouterLink>
   </nav>
   <main>
     <RouterView />

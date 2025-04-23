@@ -214,12 +214,12 @@ export default {
 
         // Отображение детальной информации о задаче
         viewTaskDetails(taskId) {
-            this.$router.push({ path: `/tasks/${taskId}` });
+            this.$router.push({ path: `/view/${taskId}` });
         },
 
         // Переход к созданию новой задачи
         goToCreateTask() {
-            this.$router.push({ path: '/tasks/create' });
+            this.$router.push({ path: '/create' });
         },
 
         // Форматирование даты и времени
