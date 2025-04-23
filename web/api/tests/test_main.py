@@ -76,10 +76,12 @@ async def client(db_session, s3_client_mock, transcode_video_mock):
 
 async def test_create_task(client, s3_client_mock, transcode_video_mock):
     mp4_data = random.randbytes(100)
+    mp4_header = b'\x00\x00\x00\x1cftypmp42\x00\x00\x00\x01isommp41mp42\x00\x00\x00\x01'
+
     response = await client.post(
         '/tasks',
         files={
-            'file': ('video.mp4', mp4_data, 'video/mp4')
+            'file': ('video.mp4', mp4_header + mp4_data, 'video/mp4')
         },
     )
     assert response.status_code == HTTPStatus.CREATED, response.json()
