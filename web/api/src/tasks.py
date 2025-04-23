@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import boto3
 from celery import Celery, Task as CeleryTask
-from sqlalchemy import URL, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import Task, TaskStatus
@@ -21,22 +21,14 @@ class TranscodeVideoTask(CeleryTask):
 
     @cached_property
     def session_maker(self):
-        url = URL.create(
-            drivername=self.app.conf.get('database_driver'),
-            host=self.app.conf.get('database_host'),
-            username=self.app.conf.get('database_user'),
-            password=self.app.conf.get('database_password'),
-            port=self.app.conf.get('database_port'),
-            database=self.app.conf.get('database_name')
-        ).render_as_string(hide_password=False)
-        engine = create_engine(url)
+        engine = create_engine(self.app.conf.get('database_url'))
         return sessionmaker(engine, expire_on_commit=False)
 
     @cached_property
     def s3_client(self):
-        s3_access_key_id = self.app.conf.get('S3_ACCESS_KEY_ID')
-        s3_secret_access_key = self.app.conf.get('S3_SECRET_ACCESS_KEY')
-        s3_endpoint_url = self.app.conf.get('S3_ENDPOINT_URL')
+        s3_access_key_id = self.app.conf.get('s3_access_key_id')
+        s3_secret_access_key = self.app.conf.get('s3_secret_access_key')
+        s3_endpoint_url = self.app.conf.get('s3_endpoint_url')
 
         if not all([s3_access_key_id, s3_secret_access_key]):
             raise ValueError("S3 credentials not configured in worker")
@@ -137,7 +129,7 @@ class TranscodeVideoTask(CeleryTask):
         )
 
         with NamedTemporaryFile(suffix='.mp4') as output_file:
-            logging.info(f'Encoding file {task.source_url}')
+            logging.info(f'Encoding file {task.source_file}')
             try:
                 self.encode_video(presigned_url, output_file.name)
                 self.s3_client.upload_file(

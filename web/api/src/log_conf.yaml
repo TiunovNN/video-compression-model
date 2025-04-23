@@ -27,6 +27,11 @@ loggers:
     handlers:
       - access
     propagate: no
+  sqlalchemy.engine:
+    level: WARNING
+    handlers:
+      - default
+    propagate: no
 root:
   level: INFO
   handlers:

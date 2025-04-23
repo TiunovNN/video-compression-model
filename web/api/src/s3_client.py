@@ -4,6 +4,7 @@ import uuid
 from typing import Optional, Self
 
 from aioboto3 import Session
+from botocore.config import Config
 
 from settings import Settings
 
@@ -27,6 +28,7 @@ class S3Client:
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             endpoint_url=settings.S3_ENDPOINT_URL,
+            config=Config(signature_version="s3v4")
         )
         self.s3 = None
         self.bucket_name = settings.S3_BUCKET

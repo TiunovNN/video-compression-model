@@ -11,7 +11,7 @@ def async_engine(settings: Settings):
     url = make_url(settings.DATABASE_URL)
     url = url.set(drivername='postgresql+asyncpg')
     logging.info(f'Connection to DB {url.render_as_string()}')
-    return create_async_engine(url.render_as_string(False), echo=True)
+    return create_async_engine(url.render_as_string(False))
 
 
 def async_session(settings: Settings) -> AsyncSession:

@@ -1,14 +1,16 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Annotated
 
+import magic
 from fastapi import FastAPI, HTTPException, Query, UploadFile
 from sqlalchemy import select
 
 import schemas
-from database import Task, TaskStatus, async_engine, Base
-from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI, get_db
+from database import Base, Task, TaskStatus, async_engine
+from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI
 from s3_client import S3Exception
 from schemas import TaskResponse
 from settings import get_settings
@@ -38,13 +40,19 @@ async def create_encoding_task(
     Upload a video file and create an encoding task
     """
     # Check if file is a video
-    content_type = file.content_type
-    if not content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="File must be a video")
+    file.file.seek(0)
+    content_type = magic.from_buffer(file.file.read(1024), mime=True)
+    logging.info(f'{content_type=}')
+    file.file.seek(0)
+    is_video = content_type.startswith('video/')
+
+    if not is_video:
+        raise HTTPException(status_code=400, detail='File must be a video')
 
     # Upload to S3
     s3_object_name = s3_client.generate_unique_filename(file.filename)
-    s3_key = f"source/{s3_object_name}"
+    s3_key = f'source/{s3_object_name}'
+    file.file.seek(0)
     try:
         await s3_client.upload_file(file.file, s3_key, content_type)
     except S3Exception as e:
