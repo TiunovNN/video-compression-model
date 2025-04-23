@@ -1,4 +1,5 @@
 import logging
+from functools import cache
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -7,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from settings import Settings
 
 
+@cache
 def async_engine(settings: Settings):
     url = make_url(settings.DATABASE_URL)
     url = url.set(drivername='postgresql+asyncpg')
