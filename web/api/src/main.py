@@ -14,6 +14,7 @@ from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI
 from s3_client import S3Exception
 from schemas import TaskResponse
 from settings import get_settings
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -27,6 +28,13 @@ async def on_startup(app: FastAPI):
 
 
 app = FastAPI(title="Video Encoding Service", lifespan=on_startup)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
 
 @app.post('/tasks', status_code=HTTPStatus.CREATED)

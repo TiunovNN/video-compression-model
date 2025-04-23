@@ -39,7 +39,7 @@ services:
       timeout: 5s
       retries: 5
   worker:
-    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_worker:1
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_worker:2
     environment:
       DATABASE_URL: postgresql://postgres:password@database:5432/video_encoding
       CELERY_BROKER_URL: redis://redis:6379/0

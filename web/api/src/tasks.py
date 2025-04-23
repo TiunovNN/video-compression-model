@@ -143,6 +143,7 @@ class TranscodeVideoTask(CeleryTask):
                 task.error_message = str(e)
             else:
                 task.status = TaskStatus.COMPLETED
+                task.output_file = output_key
 
         with self.session_maker.begin() as session:
             session.merge(task)
@@ -154,7 +155,7 @@ class TranscodeVideoTask(CeleryTask):
         """Stub for ML model"""
         return [
             '-c:v', 'libx265',
-            '-preset', 'veryslow',
+            '-preset', 'ultrafast',
             '-crf', '16',
         ]
 
