@@ -10,7 +10,7 @@
                 <p>Перетащите видеофайл сюда или</p>
                 <label for="file-input" class="file-input-label">
                     Выберите файл
-                    <input type="file" id="file-input" accept="video/*" @change="onFileSelected" class="file-input" />
+                    <input type="file" id="file-input" accept="video/*,.mkv" @change="onFileSelected" class="file-input" />
                 </label>
             </div>
 

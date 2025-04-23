@@ -3,16 +3,28 @@
         <h1>Список задач по кодированию видео</h1>
 
         <!-- Фильтры -->
-        <div class="filter-panel">
+        <div class="filter-container">
             <h2>Фильтры</h2>
-            <div class="status-filters">
-                <div v-for="status in availableStatuses" :key="status" class="filter-item">
-                    <input type="checkbox" :id="status" :value="status" v-model="selectedStatuses"
-                        @change="updateTasks">
-                    <label :for="status" :class="`status-label ${status}`">{{ getStatusLabel(status) }}</label>
+
+            <div class="dropdown-filter">
+                <div class="dropdown-header" @click="toggleFilterDropdown">
+                    <span>Статусы: {{ getSelectedStatusesLabel() }}</span>
+                    <i class="dropdown-arrow" :class="{ 'open': isFilterDropdownOpen }">▼</i>
+                </div>
+
+                <div class="dropdown-menu" v-show="isFilterDropdownOpen">
+                    <div class="dropdown-item" v-for="status in availableStatuses" :key="status">
+                        <input type="checkbox" :id="status" :value="status" v-model="selectedStatuses"
+                            @change="updateTasks">
+                        <label :for="status" :class="`status-label ${status}`">{{ getStatusLabel(status) }}</label>
+                    </div>
+
+                    <div class="dropdown-actions">
+                        <button class="select-all-btn" @click="selectAllStatuses">Выбрать все</button>
+                        <button class="clear-filter-btn" @click="clearFilters">Сбросить</button>
+                    </div>
                 </div>
             </div>
-            <button class="clear-filter-btn" @click="clearFilters">Сбросить фильтры</button>
         </div>
 
         <!-- Таблица задач -->
@@ -113,7 +125,8 @@ export default {
             currentPage: 1,
             totalCount: 0,
             // Для определения общего количества страниц
-            totalPages: 0
+            totalPages: 0,
+            isFilterDropdownOpen: false,
         };
     },
     computed: {
@@ -249,7 +262,34 @@ export default {
             };
 
             return statusMap[status] || status;
-        }
+        },
+        toggleFilterDropdown() {
+            this.isFilterDropdownOpen = !this.isFilterDropdownOpen;
+        },
+
+        selectAllStatuses() {
+            this.selectedStatuses = [...this.availableStatuses];
+            this.updateTasks();
+        },
+
+        getSelectedStatusesLabel() {
+            if (this.selectedStatuses.length === 0) {
+                return "Все";
+            } else if (this.selectedStatuses.length === this.availableStatuses.length) {
+                return "Все";
+            } else if (this.selectedStatuses.length === 1) {
+                return this.getStatusLabel(this.selectedStatuses[0]);
+            } else {
+                return `Выбрано (${this.selectedStatuses.length})`;
+            }
+        },
+
+        // Закрываем выпадающий список при клике вне его
+        closeDropdownOnOutsideClick(event) {
+            if (this.isFilterDropdownOpen && !this.$el.querySelector('.dropdown-filter').contains(event.target)) {
+                this.isFilterDropdownOpen = false;
+            }
+        },
     }
 };
 </script>
@@ -612,5 +652,115 @@ h2 {
 
 .create-task-btn:hover {
     background-color: #388E3C;
+}
+
+.filter-container {
+  margin-bottom: 20px;
+}
+
+.dropdown-filter {
+  position: relative;
+  width: 250px;
+  user-select: none;
+}
+
+.dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dropdown-header:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdown-arrow {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  margin-top: 5px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 15px;
+  transition: background-color 0.2s;
+}
+
+.dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdown-item input[type="checkbox"] {
+  margin-right: 10px;
+}
+
+.status-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  flex-grow: 1;
+}
+
+.dropdown-actions {
+  display: flex;
+  padding: 10px 15px;
+  border-top: 1px solid #eee;
+  gap: 10px;
+}
+
+.select-all-btn {
+  background-color: #e0e0e0;
+  border: none;
+  color: #333;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  flex: 1;
+}
+
+.select-all-btn:hover {
+  background-color: #d0d0d0;
+}
+
+.clear-filter-btn {
+  background-color: #f0f0f0;
+  border: none;
+  color: #666;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  flex: 1;
+}
+
+.clear-filter-btn:hover {
+  background-color: #e0e0e0;
 }
 </style>
