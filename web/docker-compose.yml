@@ -50,7 +50,7 @@ services:
       S3_BUCKET: tnn-api-encoded
       PRESIGNED_URL_EXPIRATION: '3600'
     env_file:
-      - api/.env
+      - .env
     depends_on:
       database:
         condition: service_healthy
@@ -69,7 +69,7 @@ services:
       S3_BUCKET: tnn-api-encoded
       PRESIGNED_URL_EXPIRATION: '3600'
     env_file:
-      - api/.env
+      - .env
     depends_on:
       database:
         condition: service_healthy
