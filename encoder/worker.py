@@ -54,13 +54,14 @@ class TranscodeVideoTask(Task):
         executable_name = 'ffmpeg'
         possible_bin_dirs = [
             f'./{executable_name}',
-            # Executable can be in same dir when graph build in "UNION" with required binaries
             executable_name,
         ]
 
         for bin_ in possible_bin_dirs:
             if resolved_binary := shutil.which(bin_):
                 return resolved_binary
+
+        raise FileNotFoundError(f"{executable_name} not found in PATH")
 
     @property
     def output_bucket(self):
