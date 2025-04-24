@@ -3,6 +3,6 @@ import App from './App.vue'
 import router from './routes.js'
 
 createApp(App)
-    .provide('apiURI', null)
+    .provide('apiURI', '')
     .use(router)
     .mount('#app')
