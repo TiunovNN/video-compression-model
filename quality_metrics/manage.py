@@ -58,21 +58,7 @@ def configure_logging():
     type=click.INT,
     default=5432,
 )
-@click.option(
-    '--s3-access-key-id',
-    type=click.STRING,
-    envvar='S3_ACCESS_KEY_ID',
-    required=True
-)
-@click.option(
-    '--s3-secret-access-key',
-    type=click.STRING,
-    envvar='S3_SECRET_ACCESS_KEY',
-    required=True
-)
 def generate_tasks(
-    s3_access_key_id: str,
-    s3_secret_access_key: str,
     database: str,
     database_user: str,
     database_password: str,
