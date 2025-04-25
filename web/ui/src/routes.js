@@ -1,5 +1,4 @@
 import { createWebHistory, createRouter } from 'vue-router'
-// import { publicPath } from '../vue.config.js'
 import UploadPage from './components/UploadPage.vue'
 import TaskListPage from './components/TaskListPage.vue'
 import PreviewPage from './components/PreviewPage.vue';
