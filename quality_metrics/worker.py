@@ -73,7 +73,7 @@ class QualityAnalyzeTask(Task):
                 filter_params = [
                     '-lavfi', "libvmaf='"
                               r"model=version=vmaf_v0.6.1neg\:name=vmaf_neg"
-                              ":n_threads=5"
+                              f":n_threads={self.app.conf.get('thread_numbers')}"
                               ":log_fmt=csv"
                               f":log_path={output_file.name}'"
                 ]
