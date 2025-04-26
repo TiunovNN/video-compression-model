@@ -17,7 +17,7 @@ services:
     ports:
       - "6379:6379"
   worker:
-    image: cr.yandex/crpf2hsttn8cvm4ctf83/quality_metrics:15
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/quality_metrics:20
     scale: 1
     env_file:
       - .env

@@ -1,11 +1,11 @@
-import csv
-import io
 import logging
 import os
+import shutil
+import subprocess
 import sys
-from concurrent.futures import FIRST_COMPLETED, as_completed, wait
-from concurrent.futures.thread import ThreadPoolExecutor
 from functools import cached_property
+from tempfile import NamedTemporaryFile
+from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -13,91 +13,6 @@ from botocore.exceptions import ClientError
 from celery import Celery, Task
 from dotenv import load_dotenv
 from sqlalchemy import URL
-
-from decoder import Decoder
-from extractors import (
-    Extractor,
-    YExtractor,
-)
-from metrics import (
-    MSSSIMCalculator,
-    MetricCalculator,
-)
-
-Processor = Extractor | MetricCalculator
-
-
-def analyze_file(source_url, distorted_url) -> bytes:
-    extractors = [
-        YExtractor(),
-    ]
-    extractors = {
-        extractor.name(): extractor
-        for extractor in extractors
-    }
-    metric_calculator = [
-        MSSSIMCalculator('Y'),
-    ]
-    buffer = io.StringIO()
-    fieldnames = [
-        'source_format',
-        'distorted_format',
-        'source_key_frame',
-        'distorted_key_frame',
-        'source_time',
-        'distorted_time',
-        'source_pts',
-        'distorted_pts',
-    ]
-    for calculator in metric_calculator:
-        fieldnames.append(calculator.name())
-
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames, quoting=csv.QUOTE_STRINGS, delimiter='|')
-    writer.writeheader()
-    pending = set()
-    if max_process := os.getenv('MAX_PROCESS'):
-        max_process = int(max_process)
-    else:
-        max_process = 999
-    with ThreadPoolExecutor() as pool:
-        with Decoder(source_url) as decoder_source, Decoder(distorted_url) as decoder_distorted:
-            for frame_source, frame_distorted in zip(decoder_source, decoder_distorted):
-                pending.add(pool.submit(
-                    process_frame,
-                    extractors,
-                    frame_distorted,
-                    frame_source,
-                    metric_calculator,
-                ))
-                if len(pending) > min(pool._max_workers * 2, max_process):
-                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
-                    for future in done:
-                        writer.writerow(future.result())
-            for future in as_completed(pending):
-                writer.writerow(future.result())
-    return buffer.getvalue().encode()
-
-
-def process_frame(extractors, frame_distorted, frame_source, metric_calculator):
-    item = {
-        'source_format': frame_source.format.name,
-        'distorted_format': frame_distorted.format.name,
-        'source_key_frame': int(frame_source.key_frame),
-        'distorted_key_frame': int(frame_distorted.key_frame),
-        'source_time': frame_source.time,
-        'distorted_time': frame_distorted.time,
-        'source_pts': frame_source.pts,
-        'distorted_pts': frame_source.pts,
-    }
-    source_array = frame_source.to_ndarray()
-    distorted_array = frame_distorted.to_ndarray()
-    for calculator in metric_calculator:
-        extractor = extractors[calculator.depends_on()]
-        source_image = extractor.extract(source_array)
-        distorted_image = extractor.extract(distorted_array)
-        value = calculator.feed_frame(source_image, distorted_image)
-        item[calculator.name()] = value
-    return item
 
 
 class QualityAnalyzeTask(Task):
@@ -123,6 +38,72 @@ class QualityAnalyzeTask(Task):
     def output_bucket(self):
         return self.app.conf.get('s3_output_bucket')
 
+    @cached_property
+    def ffmpeg_bin(self) -> Optional[str]:
+        executable_name = 'ffmpeg'
+        possible_bin_dirs = [
+            f'./{executable_name}',
+            executable_name,
+        ]
+
+        for bin_ in possible_bin_dirs:
+            if resolved_binary := shutil.which(bin_):
+                return resolved_binary
+
+        raise FileNotFoundError(f"{executable_name} not found in PATH")
+
+    def analyze_file(self, source_url, distorted_url) -> bytes:
+        with NamedTemporaryFile(suffix='.csv') as output_file:
+            try:
+                # Build the ffmpeg command
+                input_params = [
+                    '-seekable', '1',
+                    '-reconnect_delay_max', '300',
+                    '-multiple_requests', '1',
+                    '-reconnect_on_http_error', '429,5xx',
+                    '-reconnect_on_network_error', '1',
+                    '-i', distorted_url,
+                    '-seekable', '1',
+                    '-reconnect_delay_max', '300',
+                    '-multiple_requests', '1',
+                    '-reconnect_on_http_error', '429,5xx',
+                    '-reconnect_on_network_error', '1',
+                    '-i', source_url,
+                ]
+                filter_params = [
+                    '-lavfi', "libvmaf='"
+                              r"model=version=vmaf_v0.6.1neg\:name=vmaf_neg"
+                              f":n_threads={self.app.conf.get('thread_numbers')}"
+                              ":log_fmt=csv"
+                              f":log_path={output_file.name}'"
+                ]
+                global_params = [
+                    '-f',
+                    'null',
+                    '-y',
+                    '-hide_banner',
+                    '-loglevel', 'error',
+                    '-'
+                ]
+
+                # Run the command
+                subprocess.run(
+                    [
+                        self.ffmpeg_bin,
+                        *input_params,
+                        *filter_params,
+                        *global_params
+                    ], check=True, capture_output=True, text=True
+                )
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Error encoding video: {e.stderr}")
+                raise RuntimeError(str(e)) from e
+            except Exception as e:
+                logging.error(f"Unexpected error during encoding: {str(e)}")
+                raise RuntimeError(f'Unknown error {e}') from e
+            output_file.seek(0)
+            return output_file.read()
+
     def run(self, source_url: str, distorted_url: str):
         parsed_source = urlparse(source_url)
         presigned_source_url = self.s3_client.generate_presigned_url(
@@ -131,7 +112,7 @@ class QualityAnalyzeTask(Task):
             ExpiresIn=3600 * 24,
         )
         parsed_distorted = urlparse(distorted_url)
-        new_path = parsed_distorted.path.lstrip('/') + '.csv'
+        new_path = parsed_distorted.path.lstrip('/') + '.vmaf.csv'
         try:
             self.s3_client.head_object(
                 Bucket=self.output_bucket,
@@ -148,7 +129,7 @@ class QualityAnalyzeTask(Task):
             ExpiresIn=3600 * 24,
         )
         logging.info(f'Analyzing file {distorted_url}')
-        csv_data = analyze_file(presigned_source_url, presigned_distorted_url)
+        csv_data = self.analyze_file(presigned_source_url, presigned_distorted_url)
         logging.info(
             f'Uploading {len(csv_data)} to {self.output_bucket}/{new_path}'
         )
@@ -197,7 +178,8 @@ def configure_celery():
         database_password=os.getenv('DATABASE_PASSWORD'),
         database_name=os.getenv('DATABASE_NAME'),
         database_port=os.getenv('DATABASE_PORT'),
-        task_default_queue='quality_analyze'
+        task_default_queue='quality_analyze',
+        thread_numbers=os.getenv('THREAD_COUNT', os.cpu_count())
     )
     app.conf.broker_transport_options = {'is_secure': True}
 

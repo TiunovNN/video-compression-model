@@ -1,5 +1,6 @@
 import logging
 import sys
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import click
 from dotenv import load_dotenv
@@ -58,21 +59,7 @@ def configure_logging():
     type=click.INT,
     default=5432,
 )
-@click.option(
-    '--s3-access-key-id',
-    type=click.STRING,
-    envvar='S3_ACCESS_KEY_ID',
-    required=True
-)
-@click.option(
-    '--s3-secret-access-key',
-    type=click.STRING,
-    envvar='S3_SECRET_ACCESS_KEY',
-    required=True
-)
 def generate_tasks(
-    s3_access_key_id: str,
-    s3_secret_access_key: str,
     database: str,
     database_user: str,
     database_password: str,
@@ -90,12 +77,17 @@ def generate_tasks(
     ).render_as_string(hide_password=False)
     engine = create_engine(url)
     with Session(engine) as session:
-        cursor = session.query(EncoderTask).filter_by(
-            status=Status.SUCESS,
-        )
-        for task in tqdm(cursor):
-            task: EncoderTask
-            quality_analyze_task.delay(task.source_url, task.destination_url)
+        with ThreadPoolExecutor() as pool:
+            total = session.query(EncoderTask).filter_by(status=Status.SUCESS).count()
+            cursor = session.query(EncoderTask).filter_by(
+                status=Status.SUCESS,
+            )
+            futures = pool.map(
+                lambda task: quality_analyze_task.delay(task.source_url, task.destination_url),
+                cursor
+            )
+            for _ in tqdm(futures, total=total):
+                pass
 
 
 if __name__ == '__main__':
