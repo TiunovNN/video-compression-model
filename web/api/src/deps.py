@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import async_session
 from s3_client import S3Client
 from settings import Settings, get_settings
-from tasks import TranscodeVideoTask, configure_celery
+from tasks import configure_celery
+from tasks.transcode import TranscodeVideoTask
 
 APISettings = Annotated[Settings, Depends(get_settings)]
 

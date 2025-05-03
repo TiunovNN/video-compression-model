@@ -4,7 +4,9 @@ import sys
 from dotenv import load_dotenv
 
 from settings import get_settings
-from tasks import TranscodeVideoTask, configure_celery
+from tasks import configure_celery
+from tasks.feature_calculator import FeatureCalculatorTask
+from tasks.transcode import TranscodeVideoTask
 
 
 def configure_logging():
@@ -22,3 +24,4 @@ configure_logging()
 load_dotenv()
 celery = configure_celery(get_settings())
 transcode_video_task = celery.register_task(TranscodeVideoTask)
+feature_calculator_task = celery.register_task(FeatureCalculatorTask)
