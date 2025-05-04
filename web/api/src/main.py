@@ -11,7 +11,12 @@ from sqlalchemy import select
 
 import schemas
 from database import Base, Task, TaskStatus, async_engine
-from deps import DBSession, FeatureCalculatorTaskAPI, S3ClientAPI, TranscodeVideoTaskAPI
+from deps import (
+    DBSession,
+    FeatureCalculatorTaskAPI,
+    S3ClientAPI,
+    TranscodeVideoTaskAPI,
+)
 from s3_client import S3Exception
 from schemas import TaskResponse
 from settings import get_settings
