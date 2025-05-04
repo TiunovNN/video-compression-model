@@ -8,6 +8,7 @@ from database import async_session
 from s3_client import S3Client
 from settings import Settings, get_settings
 from tasks import configure_celery
+from tasks.feature_calculator import FeatureCalculatorTask
 from tasks.transcode import TranscodeVideoTask
 
 APISettings = Annotated[Settings, Depends(get_settings)]
@@ -35,6 +36,11 @@ def get_transcode_video_task(celery_app: APICelery) -> TranscodeVideoTask:
     return celery_app.register_task(TranscodeVideoTask)
 
 
+def get_feature_calculator_task(celery_app: APICelery) -> FeatureCalculatorTask:
+    return celery_app.register_task(FeatureCalculatorTask)
+
+
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 S3ClientAPI = Annotated[S3Client, Depends(get_s3_client)]
 TranscodeVideoTaskAPI = Annotated[TranscodeVideoTask, Depends(get_transcode_video_task)]
+FeatureCalculatorTaskAPI = Annotated[FeatureCalculatorTask, Depends(get_feature_calculator_task)]

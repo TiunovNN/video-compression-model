@@ -15,6 +15,7 @@ def configure_celery(settings: Settings):
         s3_bucket=settings.S3_BUCKET,
         database_url=settings.DATABASE_URL,
         task_default_queue=settings.CELERY_QUEUE_NAME,
+        regressor_path=settings.REGRESSOR_PATH,
     )
     # Special for SQS
     app.conf.broker_transport_options = {'is_secure': True}

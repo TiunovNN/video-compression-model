@@ -1,11 +1,12 @@
 import logging
-from collections import defaultdict
 from concurrent.futures import (
-    Future,
+    FIRST_COMPLETED,
     ThreadPoolExecutor,
-    as_completed,
+    wait,
 )
 from functools import cached_property
+from graphlib import TopologicalSorter
+from itertools import chain
 
 import boto3
 import numpy as np
@@ -14,8 +15,8 @@ from catboost import CatBoostRegressor
 from celery import Task as CeleryTask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from urllib3.filepost import writer
 
+from database import Task, TaskStatus
 from .decoder import Decoder
 from .extractors import (
     Extractor,
@@ -37,16 +38,18 @@ Processor = Extractor | FeatureCalculator
 ProcessorResult = np.ndarray | float | None
 
 
-def run_processor(processor: Processor, future: Future[np.ndarray]) -> tuple[Processor, ProcessorResult]:
+def run_processor(processor: Processor, frame_data: np.ndarray) -> tuple[Processor, ProcessorResult]:
     if isinstance(processor, Extractor):
-        return processor, processor.extract(future.result())
+        return processor, processor.extract(frame_data)
 
-    return processor, processor.feed_frame(future.result())
+    return processor, processor.feed_frame(frame_data)
 
 
 class FeatureCalculatorTask(CeleryTask):
-    CRFS = tuple(range(16, 30))
-    QP = tuple(range(25, 50))
+    name = 'feature_calculator'
+    CRFS = tuple(range(17, 31))
+    QP = tuple(range(25, 41))
+    PROGRESS_INTERVAL = 25
 
     PARAMS = [
         {'parameter': 'crf', 'value': crf}
@@ -55,6 +58,12 @@ class FeatureCalculatorTask(CeleryTask):
         {'parameter': 'qp', 'value': qp}
         for qp in QP
     ]
+    logger = logging.getLogger('feature_calculator')
+
+    @cached_property
+    def session_maker(self):
+        engine = create_engine(self.app.conf.get('database_url'))
+        return sessionmaker(engine, expire_on_commit=False)
 
     @cached_property
     def s3_client(self):
@@ -79,11 +88,15 @@ class FeatureCalculatorTask(CeleryTask):
     @cached_property
     def regressor_model(self) -> CatBoostRegressor:
         regressor = CatBoostRegressor()
-        regressor.load_model(self.app.conf.get('model.cbm'))
+        regressor.load_model(self.app.conf.get('regressor_path'))
         return regressor
 
-    @staticmethod
-    def analyze_file(presigned_url: str) -> list[dict]:
+    @classmethod
+    def analyze_file(cls, presigned_url: str) -> list[dict]:
+        single_extractors = [
+            YExtractor(),
+            TICalculator(),
+        ]
         extractors = [
             FHV13Extractor(),
             GLCMExtractor(),
@@ -92,8 +105,6 @@ class FeatureCalculatorTask(CeleryTask):
             GLCMPropertyExtractor('energy'),
             GLCMPropertyExtractor('homogeneity'),
             SIExtractor(),
-            TICalculator(),
-            YExtractor(),
         ]
         feature_calculators = [
             MeanCalculator('Y', 'CTI_mean'),
@@ -112,48 +123,109 @@ class FeatureCalculatorTask(CeleryTask):
             MeanCalculator('TI'),
             STDCalculator('TI'),
         ]
-        processors = extractors + feature_calculators
-        results = []
-        with Decoder(presigned_url) as decoder:
-            with ThreadPoolExecutor() as pool:
-                for frame in decoder:
-                    item = {
-                        'width': frame.width,
-                        'height': frame.height,
-                    }
-                    extractors_results = defaultdict(Future)
-                    frame_data = frame.to_ndarray()
-                    extractors_results[None].set_result(frame_data)
-                    futures = []
-                    for processor in processors:
-                        matrix_future = extractors_results[processor.depends_on()]
-                        futures.append(pool.submit(run_processor, processor, matrix_future))
+        processors = {
+            processor.name(): processor
+            for processor in chain(single_extractors, extractors, feature_calculators)
+        }
+        dependencies = {
+            processor.name(): [processor.depends_on()] if processor.depends_on() else []
+            for processor in chain(extractors, feature_calculators)
+        }
+        pending = set()
+        rows = []
+        with Decoder(presigned_url) as decoder, ThreadPoolExecutor() as pool:
+            duration = decoder.video_stream.duration
+            for idx, frame in enumerate(decoder):
+                if idx % cls.PROGRESS_INTERVAL == 0:
+                    progress = frame.pts / duration * 100
+                    cls.logger.info(f'Progress: {progress:.2f}%')
 
-                    for future in as_completed(futures):
-                        calc, result = future.result()
-                        if isinstance(calc, Extractor):
-                            extractors_results[calc.name()].set_result(result)
-                        else:
-                            item[calc.name()] = result
-                    results.append(item)
-        return result
+                item = {
+                    'width': frame.width,
+                    'height': frame.height,
+                }
+                extractors_results = {}
+                frame_data = frame.to_ndarray()
+
+                extractors_results[None] = frame_data
+                for extractor in single_extractors:
+                    extractors_results[extractor.name()] = extractor.extract(frame_data)
+
+                future = pool.submit(
+                    cls.process_one_frame,
+                    dependencies,
+                    extractors_results,
+                    item,
+                    processors
+                )
+                pending.add(future)
+                if len(pending) > 10:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        rows.append(future.result())
+
+        for future in pending:
+            rows.append(future.result())
+
+        return rows
+
+    @staticmethod
+    def process_one_frame(
+        dependencies: dict[str, list],
+        extractors_results: dict[str, np.ndarray],
+        item,
+        processors,
+    ):
+        with ThreadPoolExecutor() as pool:
+            graph = TopologicalSorter(dependencies)
+            graph.prepare()
+            pending = set()
+            while graph.is_active():
+                ready_processors_names = graph.get_ready()
+                for name in ready_processors_names:
+                    processor = processors[name]
+                    matrix = extractors_results[processor.depends_on()]
+                    future = pool.submit(run_processor, processor, matrix)
+                    pending.add(future)
+
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    calc, result = future.result()
+                    graph.done(calc.name())
+                    if isinstance(calc, Extractor):
+                        extractors_results[calc.name()] = result
+                    else:
+                        item[calc.name()] = result
+        return item
 
     @staticmethod
     def select_best_row(dataframe) -> dict:
         high_quality_rows = dataframe[dataframe['quality'] >= 95]
 
-        if not high_quality_rows.empty:
+        if high_quality_rows.empty:
             return {'parameter': 'crf', 'value': 16}
 
-        row = dataframe.loc[dataframe['quality'].idxmin()]
-        return {'parameter': row['parameter'], 'value': row['value']}
+        row = dataframe.loc[high_quality_rows['quality'].idxmin()]
+        return {'parameter': row['parameter'], 'value': int(row['value'])}
 
     def predict_parameters(self, df: pd.DataFrame) -> dict:
-        predicted_metrics = self.regressor_model.predict(df)
+        predicted_metrics = self.regressor_model.predict(df[self.regressor_model.feature_names_])
         df['quality'] = predicted_metrics
         return self.select_best_row(df)
 
-    def run(self, source_path: str) -> dict:
+    def run(self, task_id: int, source_path: str) -> dict:
+        with self.session_maker.begin() as session:
+            task = session.query(Task).filter_by(
+                id=task_id,
+            ).first()
+
+            if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+                self.logger.error(f'Task {task.id} is finished')
+                return {'error': 'Task is finished', 'status': 'failed'}
+
+            task.status = TaskStatus.PROCESSING
+            session.commit()
+
         source_path = source_path.lstrip('/')
         presigned_url = self.s3_client.generate_presigned_url(
             'get_object',
@@ -163,11 +235,11 @@ class FeatureCalculatorTask(CeleryTask):
             },
             ExpiresIn=3600 * 24,
         )
-        logging.info(f'Analyzing file {self.s3_bucket}/{source_path}')
+        self.logger.info(f'Analyzing file {self.s3_bucket}/{source_path}')
         try:
             data = self.analyze_file(presigned_url)
         except Exception as e:
-            logging.exception(f'Error while analyzing file {self.s3_bucket}/{source_path}: {e}')
+            self.logger.exception(f'Error while analyzing file {self.s3_bucket}/{source_path}: {e}')
             return {'error': str(e), 'status': 'failed'}
 
         dataframe = pd.DataFrame(data)
@@ -192,6 +264,14 @@ class FeatureCalculatorTask(CeleryTask):
                 'TI_std': ['min', 'mean', 'max', 'std'],
             }
         )
-        big_features.columns = big_features.columns.map('_'.join)
+        dts = big_features.unstack().dropna()
+        big_features = pd.DataFrame(
+            [dts.values],
+            columns=map('_'.join, dts.index),
+        )
+        self.logger.info(f'Features {big_features.to_dict("records")}')
         X_data = pd.DataFrame(self.PARAMS).merge(big_features, how='cross')
-        return self.predict_parameters(X_data)
+        predicted_parameters = self.predict_parameters(X_data)
+        predicted_parameters['status'] = 'success'
+        self.logger.info(f'{predicted_parameters=}')
+        return predicted_parameters

@@ -42,7 +42,7 @@ services:
       timeout: 5s
       retries: 5
   worker:
-    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_worker:2
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_worker:3
     environment:
       DATABASE_URL: postgresql://postgres:password@database:5432/video_encoding
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -59,7 +59,7 @@ services:
       storage:
         condition: service_healthy
   api:
-    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_api:3
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_api:4
     ports:
       - "8000:80"
     environment:
@@ -78,7 +78,7 @@ services:
       storage:
         condition: service_healthy
   balancer:
-    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_web:1
+    image: cr.yandex/crpf2hsttn8cvm4ctf83/encoding_web:2
     ports:
       - "9231:80"
     depends_on:
