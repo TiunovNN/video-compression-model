@@ -7,7 +7,7 @@ from typing import Annotated
 import magic
 from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 import schemas
 from database import Base, Task, TaskStatus, async_engine
@@ -101,7 +101,7 @@ async def list_tasks(
     statement = select(Task)
     if statuses:
         statement = statement.filter(Task.status.in_(statuses))
-    statement = statement.order_by(Task.created_at).offset(skip).limit(limit)
+    statement = statement.order_by(desc(Task.created_at)).offset(skip).limit(limit)
     result = await db.execute(statement)
     return schemas.TaskListResponse(
         tasks=[
