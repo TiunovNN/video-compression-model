@@ -268,3 +268,10 @@ cython_debug/
 .idea/
 **/*.db
 !/quality_metrics/
+**/*.bbl
+**/*.aux
+**/*.blg
+**/*.out
+**/*.pdf
+**/*.toc
+**/*.synctex.gz

@@ -1,0 +1,111 @@
+\documentclass[14pt]{extarticle}
+\usepackage[left=3.5cm, right=1.5cm, vmargin=2cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\linespread{1.3}
+\usepackage{siunitx}
+
+\usepackage{caption}
+\usepackage{subcaption}
+\renewcommand\thesubfigure{\asbuk{subfigure}}
+
+
+\usepackage{enumitem}
+\usepackage{times}
+
+\usepackage{float}
+\usepackage{cases}
+\usepackage[T2A]{fontenc}
+\usepackage[russian]{babel}   %% загружает пакет многоязыковой вёрстки
+\usepackage{graphicx}% Include figure files
+\usepackage{dcolumn}% Align table columns on decimal point
+\usepackage{bm}% bold math
+\usepackage{hyperref}% add hypertext capabilities
+\usepackage{xcolor}
+\usepackage[mathlines]{lineno}% Enable numbering of text and display math
+%\linenumbers\relax % Commence numbering lines
+
+\bibliographystyle{IEEEtran}
+\setlength{\emergencystretch}{30pt}
+\usepackage{hyphenat}
+\hyphenation{ма-те-ма-ти-ка вос-ста-нав-ли-вать}
+
+\definecolor{linkcolor}{HTML}{0000D5} % цвет ссылок
+\definecolor{urlcolor}{HTML}{0000D5} % цвет гиперссылок
+\definecolor{citecolor}{HTML}{0000D5}
+
+
+\hypersetup{pdfstartview=FitH,  linkcolor=linkcolor,urlcolor=urlcolor, colorlinks=true}
+
+%\usepackage[showframe,%Uncomment any one of the following lines to test
+%%scale=0.7, marginratio={1:1, 2:3}, ignoreall,% default settings
+%%text={7in,10in},centering,
+%%margin=1.5in,
+%%total={6.5in,8.75in}, top=1.2in, left=0.9in, includefoot,
+%%height=10in,a5paper,hmargin={3cm,0.8in},
+%]{geometry}
+
+\nocite{*}
+
+\usepackage{etoolbox}
+\makeatletter
+% \frontmatter@RRAP@format is responsible for the parentheses
+\patchcmd{\frontmatter@RRAP@format}{(}{}{}{}
+\patchcmd{\frontmatter@RRAP@format}{)}{}{}{}
+
+\makeatother
+
+\begin{document}
+	\begin{titlepage}
+        \newgeometry{left=1.5cm, right=1.5cm, vmargin=2cm}
+		\begin{center}
+			{\normalsize{ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ АВТОНОМНОЕ ОБРАЗОВАТЕЛЬНОЕ УЧРЕЖДЕНИЕ ВЫСШЕГО ОБРАЗОВАНИЯ}}\\
+                \vspace{0.1cm}
+			{\normalsize{«НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ \\ “ВЫСШАЯ ШКОЛА ЭКОНОМИКИ”»}}\\
+			\vspace{1cm}
+			{\normalsize{Факультет Компьютерных Наук}}\\
+                \vspace{1.5cm}
+
+
+                {\normalsize{Тиунов Николай Николаевич}}\\
+                \vspace{0.15cm}
+			{\normalsize{\textbf{Использование методов машинного обучения для улучшения сжатия видео}}}\\
+                \vspace{0.15cm}
+                {\normalsize{Выпускная квалификационная работа}}\\
+                {\normalsize{по направлению подготовки 01.04.02 Прикладная математика и информатика}}\\
+                {\normalsize{образовательная программа «Машинное обучение и высоконагруженные системы»}} \\
+            \end{center}
+        \vspace{4.2cm}
+        \begin{minipage}{0.4\textwidth}
+        \hfill
+	\end{minipage}
+	\hspace{2cm}
+	\begin{minipage}{0.4\textwidth}
+		\begin{flushleft}
+			{\normalsize{{Научный руководитель}}}\\
+                {\normalsize{должность}}\\
+                {\normalsize{ФИО}} \\
+		\end{flushleft}
+	\end{minipage}
+            \vspace{4.0cm}
+        \begin{center}
+            Москва 2025
+        \end{center}
+        \restoregeometry
+	\end{titlepage}
+
+\section*{Аннотация}
+Бла бла бла
+
+\newpage
+
+\tableofcontents
+\newpage
+
+\section*{Введение}
+
+\newpage
+
+\bibliography{bibliography}
+\end{document}
