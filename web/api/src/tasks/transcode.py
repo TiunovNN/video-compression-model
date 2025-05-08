@@ -8,16 +8,16 @@ from typing import Optional
 from uuid import uuid4
 
 import boto3
-from celery import Celery, Task as CeleryTask
+from celery import Task as CeleryTask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import Task, TaskStatus
-from settings import Settings
 
 
 class TranscodeVideoTask(CeleryTask):
     name = 'transcode_video'
+    logger = logging.getLogger('transcode_video')
 
     @cached_property
     def session_maker(self):
@@ -62,11 +62,11 @@ class TranscodeVideoTask(CeleryTask):
         self,
         input_path: str,
         output_path: str,
+        encode_params: list[str],
     ):
         """Encode a video using ffmpeg with the given parameters."""
-        encode_params = self.encode_params(input_path)
         try:
-            logging.info(f'Encoding video with {shlex.join(encode_params)}')
+            self.logger.info(f'Encoding video with {shlex.join(encode_params)}')
 
             # Build the ffmpeg command
             input_params = [
@@ -103,7 +103,7 @@ class TranscodeVideoTask(CeleryTask):
             logging.error(f'Unexpected error during encoding: {str(e)}')
             raise RuntimeError(f'Unknown error {e}') from e
 
-    def run(self, task_id: int):
+    def run(self, encode_params: dict, task_id: int):
         with self.session_maker.begin() as session:
             task = session.query(Task).filter_by(
                 id=task_id,
@@ -117,8 +117,10 @@ class TranscodeVideoTask(CeleryTask):
             session.commit()
             task_id = task.id
             session.expunge(task)
-        output_key = f'encoded/{uuid4().hex}.mp4'
 
+        encode_params = self.encode_params(encode_params)
+
+        output_key = f'encoded/{uuid4().hex}.mp4'
         presigned_url = self.s3_client.generate_presigned_url(
             'get_object',
             Params={
@@ -129,9 +131,9 @@ class TranscodeVideoTask(CeleryTask):
         )
 
         with NamedTemporaryFile(suffix='.mp4') as output_file:
-            logging.info(f'Encoding file {task.source_file}')
+            self.logger.info(f'Encoding file {task.source_file}')
             try:
-                self.encode_video(presigned_url, output_file.name)
+                self.encode_video(presigned_url, output_file.name, encode_params)
                 self.s3_client.upload_file(
                     Filename=output_file.name,
                     Bucket=self.s3_bucket,
@@ -151,29 +153,16 @@ class TranscodeVideoTask(CeleryTask):
 
         return {'task_id': task_id, 'status': task.status.value}
 
-    def encode_params(self, input_path) -> list[str]:
+    def encode_params(self, params: dict) -> list[str]:
         """Stub for ML model"""
-        return [
+        result = [
             '-c:v', 'libx265',
-            '-preset', 'ultrafast',
-            '-crf', '16',
+            '-preset', 'veryslow',
         ]
+        if params['status'] == 'failed':
+            result.extend(['-crf', '16'])
+        elif params['status'] == 'success':
+            result.append(f'-{params["parameter"]}')
+            result.append(f'{params["value"]}')
 
-
-def configure_celery(settings: Settings):
-    app = Celery('encoder_tasks')
-
-    app.conf.update(
-        broker_url=settings.CELERY_BROKER_URL,
-        result_backend=f'db+{settings.DATABASE_URL}',
-        s3_endpoint_url=settings.S3_ENDPOINT_URL,
-        s3_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        s3_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        s3_bucket=settings.S3_BUCKET,
-        database_url=settings.DATABASE_URL,
-        task_default_queue=settings.CELERY_QUEUE_NAME,
-    )
-    # Special for SQS
-    app.conf.broker_transport_options = {'is_secure': True}
-
-    return app
+        return result

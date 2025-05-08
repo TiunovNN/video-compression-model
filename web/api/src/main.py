@@ -6,15 +6,20 @@ from typing import Annotated
 
 import magic
 from fastapi import FastAPI, HTTPException, Query, UploadFile
-from sqlalchemy import select
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import desc, select
 
 import schemas
 from database import Base, Task, TaskStatus, async_engine
-from deps import DBSession, S3ClientAPI, TranscodeVideoTaskAPI
+from deps import (
+    DBSession,
+    FeatureCalculatorTaskAPI,
+    S3ClientAPI,
+    TranscodeVideoTaskAPI,
+)
 from s3_client import S3Exception
 from schemas import TaskResponse
 from settings import get_settings
-from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -43,6 +48,7 @@ async def create_encoding_task(
     file: UploadFile,
     s3_client: S3ClientAPI,
     transcode_video_task: TranscodeVideoTaskAPI,
+    feature_calculator_task: FeatureCalculatorTaskAPI,
 ) -> schemas.TaskResponse:
     """
     Upload a video file and create an encoding task
@@ -73,13 +79,11 @@ async def create_encoding_task(
     db.add(db_task)
     await db.commit()
     await db.refresh(db_task)
-    await asyncio.get_event_loop().run_in_executor(
-        None,
-        transcode_video_task.delay,
-        db_task.id,
+    chain = (
+        feature_calculator_task.s(db_task.id, db_task.source_file) |
+        transcode_video_task.s(db_task.id)
     )
-    print(f'{db_task.created_at=}')
-    print(f'{db_task.created_at.tzinfo=}')
+    await asyncio.get_event_loop().run_in_executor(None, chain)
     return TaskResponse.model_validate(db_task)
 
 
@@ -97,7 +101,7 @@ async def list_tasks(
     statement = select(Task)
     if statuses:
         statement = statement.filter(Task.status.in_(statuses))
-    statement = statement.order_by(Task.created_at).offset(skip).limit(limit)
+    statement = statement.order_by(desc(Task.created_at)).offset(skip).limit(limit)
     result = await db.execute(statement)
     return schemas.TaskListResponse(
         tasks=[

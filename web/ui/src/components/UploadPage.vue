@@ -50,7 +50,7 @@
         <div class="upload-limits">
             <h3>Ограничения загрузки:</h3>
             <ul>
-                <li>Максимальный размер файла: 2GB</li>
+                <li>Максимальный размер файла: 15GB</li>
                 <li>Поддерживаемые форматы: MP4, AVI, MOV, MKV</li>
             </ul>
         </div>
@@ -97,10 +97,10 @@ export default {
             event.target.value = '';
         },
         validateFile(file) {
-            // Проверка размера (2GB)
-            const maxSize = 2 * 1024 * 1024 * 1024;
+            // Проверка размера (15GB)
+            const maxSize = 15 * 1024 * 1024 * 1024;
             if (file.size > maxSize) {
-                this.uploadError = 'Файл слишком большой. Максимальный размер 2GB.';
+                this.uploadError = 'Файл слишком большой. Максимальный размер 15GB.';
                 return false;
             }
 

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     CELERY_BROKER_URL: str = 'redis://localhost:6379/0'
     CELERY_QUEUE_NAME: str = 'api_transcoding'
+    REGRESSOR_PATH: str = 'model.cbm'
 
 
 def get_settings() -> Settings:

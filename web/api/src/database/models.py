@@ -1,12 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
-from functools import partial
 from typing import Optional
 
-from sqlalchemy import DateTime, Identity, String, Text
+from sqlalchemy import Identity, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.sql import func
-from sqlalchemy_utc import utcnow, UtcDateTime
+from sqlalchemy_utc import UtcDateTime, utcnow
 
 
 class Base(DeclarativeBase):
