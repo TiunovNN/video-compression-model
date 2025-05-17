@@ -3,6 +3,7 @@ import shlex
 import shutil
 import subprocess
 from functools import cached_property
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
 from uuid import uuid4
@@ -146,6 +147,7 @@ class TranscodeVideoTask(CeleryTask):
             else:
                 task.status = TaskStatus.COMPLETED
                 task.output_file = output_key
+                task.output_size = Path(output_file.name).stat().st_size
 
         with self.session_maker.begin() as session:
             session.merge(task)

@@ -30,4 +30,6 @@ class TaskListResponse(BaseModel):
 
 
 class TaskDetailResponse(TaskResponse):
+    source_size: int
+    output_size: Optional[int] = None
     download_url: Optional[str] = None

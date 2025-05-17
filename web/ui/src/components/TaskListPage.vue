@@ -49,19 +49,15 @@
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>Исходный файл</th>
-                        <th>Выходной файл</th>
-                        <th>Статус</th>
                         <th>Создана</th>
-                        <th>Обновлена</th>
+                        <th>Статус</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="task in tasks" :key="task.id">
                         <td>{{ task.id }}</td>
-                        <td class="file-cell">{{ getFileName(task.source_file) }}</td>
-                        <td class="file-cell">{{ task.output_file ? getFileName(task.output_file) : '-' }}</td>
+                        <td>{{ formatDate(task.created_at) }}</td>
                         <td>
                             <span :class="`status-badge ${task.status}`">
                                 {{ getStatusLabel(task.status) }}
@@ -71,8 +67,6 @@
                                 <span class="error-tooltip-text">{{ task.error_message }}</span>
                             </div>
                         </td>
-                        <td>{{ formatDate(task.created_at) }}</td>
-                        <td>{{ formatDate(task.updated_at) }}</td>
                         <td class="actions-cell">
                             <button @click="viewTaskDetails(task.id)" class="action-btn view-btn">
                                 Просмотр
@@ -241,16 +235,6 @@ export default {
             }
         },
 
-        // Получение только имени файла из полного пути
-        getFileName(path) {
-            if (!path) return '';
-
-            try {
-                return path.split('/').pop();
-            } catch (e) {
-                return path;
-            }
-        },
 
         // Получение понятного названия статуса
         getStatusLabel(status) {
