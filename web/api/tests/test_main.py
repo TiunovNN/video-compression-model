@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import Base, Task, TaskStatus
-from deps import get_db, get_s3_client, get_transcode_video_task
+from deps import get_db, get_feature_calculator_task, get_s3_client, get_transcode_video_task
 from main import app
 from s3_client import S3Client
 
@@ -57,7 +57,12 @@ def transcode_video_mock():
 
 
 @pytest.fixture
-async def client(db_session, s3_client_mock, transcode_video_mock):
+def feature_calculator_mock():
+    return MagicMock()
+
+
+@pytest.fixture
+async def client(db_session, s3_client_mock, transcode_video_mock, feature_calculator_mock):
     async def _override_get_db():
         yield db_session
 
@@ -67,14 +72,23 @@ async def client(db_session, s3_client_mock, transcode_video_mock):
     async def _override_get_transcode_video_task():
         yield transcode_video_mock
 
+    async def _override_get_feature_calculator_task():
+        yield feature_calculator_mock
+
     app.dependency_overrides[get_s3_client] = _override_get_s3_client
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_transcode_video_task] = _override_get_transcode_video_task
+    app.dependency_overrides[get_feature_calculator_task] = _override_get_feature_calculator_task
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         yield client
 
 
-async def test_create_task(client, s3_client_mock, transcode_video_mock):
+async def test_create_task(
+    client,
+    s3_client_mock,
+    transcode_video_mock,
+    feature_calculator_mock,
+):
     mp4_data = random.randbytes(100)
     mp4_header = b'\x00\x00\x00\x1cftypmp42\x00\x00\x00\x01isommp41mp42\x00\x00\x00\x01'
 
@@ -100,8 +114,10 @@ async def test_create_task(client, s3_client_mock, transcode_video_mock):
         response.json()['source_file'],
         ExtraArgs={'ContentType': 'video/mp4'}
     )
-    assert transcode_video_mock.delay.call_args == call(
-        response.json()['id'],
+    task = response.json()
+    assert feature_calculator_mock.s(task['id'], task['source_file'])
+    assert transcode_video_mock.s.call_args == call(
+        task['id'],
     )
 
 
@@ -118,6 +134,7 @@ async def create_task(db_session, status) -> Task:
     task = Task(
         status=TaskStatus.PENDING,
         source_file=f'source/{uuid4().hex}.mp4',
+        source_size=512,
     )
     db_session.add(task)
     await db_session.commit()
@@ -128,6 +145,7 @@ async def create_task(db_session, status) -> Task:
             task.error_message = 'test error'
         elif status == TaskStatus.COMPLETED:
             task.output_file = f'encoded/{uuid4().hex}.mp4'
+            task.output_size = 128
         await db_session.commit()
     return task
 
@@ -137,12 +155,22 @@ async def test_list_tasks(client, generate_tasks):
     assert response.status_code == HTTPStatus.OK, response.json()
     assert response.json() == {
         'tasks': [
+
             {
                 'id': ANY_INT,
-                'status': 'pending',
+                'status': 'failed',
                 'created_at': ANY_AWARE_DATETIME_STR,
                 'updated_at': ANY_AWARE_DATETIME_STR,
                 'output_file': None,
+                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
+                'error_message': 'test error',
+            },
+            {
+                'id': ANY_INT,
+                'status': 'completed',
+                'created_at': ANY_AWARE_DATETIME_STR,
+                'updated_at': ANY_AWARE_DATETIME_STR,
+                'output_file': AnyMatch('encoded/[0-9a-f]{32}.mp4'),
                 'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
                 'error_message': None,
             },
@@ -157,21 +185,12 @@ async def test_list_tasks(client, generate_tasks):
             },
             {
                 'id': ANY_INT,
-                'status': 'completed',
-                'created_at': ANY_AWARE_DATETIME_STR,
-                'updated_at': ANY_AWARE_DATETIME_STR,
-                'output_file': AnyMatch('encoded/[0-9a-f]{32}.mp4'),
-                'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
-                'error_message': None,
-            },
-            {
-                'id': ANY_INT,
-                'status': 'failed',
+                'status': 'pending',
                 'created_at': ANY_AWARE_DATETIME_STR,
                 'updated_at': ANY_AWARE_DATETIME_STR,
                 'output_file': None,
                 'source_file': AnyMatch('source/[0-9a-f]{32}.mp4'),
-                'error_message': 'test error',
+                'error_message': None,
             },
         ]
     }
@@ -187,7 +206,9 @@ async def test_get_pending_task(client, db_session, s3_client_mock):
         'created_at': ANY_AWARE_DATETIME_STR,
         'updated_at': ANY_AWARE_DATETIME_STR,
         'output_file': None,
+        'output_size': None,
         'source_file': pending_task.source_file,
+        'source_size': 512,
         'error_message': None,
         'download_url': None,
     }
@@ -203,7 +224,9 @@ async def test_get_processing_task(client, db_session, s3_client_mock):
         'created_at': ANY_AWARE_DATETIME_STR,
         'updated_at': ANY_AWARE_DATETIME_STR,
         'output_file': None,
+        'output_size': None,
         'source_file': processing_task.source_file,
+        'source_size': 512,
         'error_message': None,
         'download_url': None,
     }
@@ -220,7 +243,9 @@ async def test_get_completed_task(client, db_session, s3_client_mock):
         'created_at': ANY_AWARE_DATETIME_STR,
         'updated_at': ANY_AWARE_DATETIME_STR,
         'output_file': completed_task.output_file,
+        'output_size': 128,
         'source_file': completed_task.source_file,
+        'source_size': 512,
         'error_message': None,
         'download_url': 'https://test.s3.amazonaws.com/test.mp4?signed_url',
     }
@@ -244,7 +269,9 @@ async def test_get_failed_task(client, db_session, s3_client_mock):
         'created_at': ANY_AWARE_DATETIME_STR,
         'updated_at': ANY_AWARE_DATETIME_STR,
         'output_file': None,
+        'output_size': None,
         'source_file': failed_task.source_file,
+        'source_size': 512,
         'error_message': 'test error',
         'download_url': None,
     }

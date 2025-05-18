@@ -134,11 +134,14 @@ class FeatureCalculatorTask(CeleryTask):
         pending = set()
         rows = []
         with Decoder(presigned_url) as decoder, ThreadPoolExecutor() as pool:
-            duration = decoder.video_stream.duration
+            duration = decoder.video_stream.duration or decoder.container.duration
             for idx, frame in enumerate(decoder):
                 if idx % cls.PROGRESS_INTERVAL == 0:
-                    progress = frame.pts / duration * 100
-                    cls.logger.info(f'Progress: {progress:.2f}%')
+                    if duration:
+                        progress = frame.pts / duration * 100
+                        cls.logger.info(f'Progress: {progress:.2f}%')
+                    else:
+                        cls.logger.info(f'Progress: {idx} frames')
 
                 item = {
                     'width': frame.width,

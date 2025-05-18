@@ -75,7 +75,11 @@ async def create_encoding_task(
             detail=f"Failed to upload video to s3: {str(e)}"
         )
 
-    db_task = Task(source_file=s3_key, status=TaskStatus.PENDING)
+    db_task = Task(
+        source_file=s3_key,
+        source_size=file.size,
+        status=TaskStatus.PENDING,
+    )
     db.add(db_task)
     await db.commit()
     await db.refresh(db_task)

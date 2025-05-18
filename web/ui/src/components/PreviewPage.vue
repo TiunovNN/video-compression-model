@@ -10,6 +10,20 @@
             <div class="status-container">
                 <h2>Статус задачи: <span :class="statusClass">{{ StatusLabel }}</span></h2>
             </div>
+            <div v-if="taskStatus === 'completed'" class="file-info">
+                <div class="info-row">
+                    <span>Исходный размер:</span>
+                    <span>{{ formattedSourceSize }}</span>
+                </div>
+                <div class="info-row" v-if="fileInfo?.output_size">
+                    <span>Размер после обработки:</span>
+                    <span>{{ formattedOutputSize }}</span>
+                </div>
+                <div class="info-row" v-if="compressionRatio">
+                    <span>Степень сжатия:</span>
+                    <span>{{ compressionRatio }}x</span>
+                </div>
+            </div>
 
             <div v-if="videoUrl" class="video-container">
                 <video controls width="100%">
@@ -74,6 +88,19 @@ export default {
 
             return statusMap[this.taskStatus] || this.taskStatus;
         },
+        formattedSourceSize() {
+            return this.formatFileSize(this.fileInfo?.source_size);
+        },
+
+        formattedOutputSize() {
+            return this.formatFileSize(this.fileInfo?.output_size);
+        },
+
+        compressionRatio() {
+            if (!this.fileInfo?.source_size || !this.fileInfo?.output_size) return null;
+            const ratio = this.fileInfo.source_size / this.fileInfo.output_size;
+            return ratio.toFixed(2);
+        },
 
     },
     mounted() {
@@ -101,6 +128,8 @@ export default {
 
                 const data = await response.json();
                 this.taskStatus = data.status || data; // В зависимости от формата ответа
+                // Сохраняем информацию о файле
+                this.fileInfo = data;
 
                 // Если задача завершена, получаем URL видео и информацию о файле
                 if (this.taskStatus === 'completed') {
@@ -128,6 +157,20 @@ export default {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        },
+        formatFileSize(bytes) {
+            if (!bytes) return 'N/A';
+
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let size = bytes;
+            let unitIndex = 0;
+
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+
+            return `${size.toFixed(2)} ${units[unitIndex]}`;
         },
     }
 };
@@ -219,6 +262,26 @@ export default {
     font-size: 14px;
     line-height: 1.5;
     word-wrap: break-word;
+}
+.file-info {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 4px;
+    margin: 15px 0;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.info-row:last-child {
+    margin-bottom: 0;
+}
+
+.info-row span:first-child {
+    font-weight: bold;
 }
 
 /* Анимация появления ошибки */
