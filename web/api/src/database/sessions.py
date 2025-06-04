@@ -10,6 +10,8 @@ from settings import Settings
 def async_engine(settings: Settings):
     url = make_url(settings.DATABASE_URL)
     url = url.set(drivername='postgresql+asyncpg')
+    if settings.DATABASE_SSL:
+        url = url.set(query={'ssl': 'require'})
     logging.info(f'Connection to DB {url.render_as_string()}')
     return create_async_engine(url.render_as_string(False))
 

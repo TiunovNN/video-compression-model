@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix='')
     DATABASE_URL: str = 'postgresql://postgres:postgres@localhost:5432/video_encoding'
+    DATABASE_SSL: bool = False
 
     # S3 configuration
     AWS_ACCESS_KEY_ID: str = ''
@@ -17,6 +18,7 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = 'redis://localhost:6379/0'
     CELERY_QUEUE_NAME: str = 'api_transcoding'
     REGRESSOR_PATH: str = 'model.cbm'
+    CELERY_PREFETCH_MULTIPLIER: int = 1
 
 
 def get_settings() -> Settings:
